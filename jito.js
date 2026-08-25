@@ -20,20 +20,46 @@ import { log } from "./logger.js";
 
 const JITO_BLOCK_ENGINE_URL = process.env.JITO_BLOCK_ENGINE_URL || "https://mainnet.block-engine.jito.wtf/api/v1";
 const TIP_ACCOUNT_CACHE_MS = 5 * 60 * 1000;
+// Bounds on how long the Jito path is allowed to add on top of a normal
+// close before giving up and falling back to a plain send. Without these,
+// a slow/unresponsive Jito endpoint or a bundle that never lands could
+// stall each transaction in the close flow for up to a full blockhash
+// validity window (~60-90s) — with claim+remove+close being up to 3
+// sequential transactions, that turned "close a position" into minutes.
+const JITO_FETCH_TIMEOUT_MS = 5000;
+const JITO_CONFIRM_TIMEOUT_MS = 12000;
 
 let cachedTipAccount = null;
 let cachedTipAccountAt = 0;
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function withTimeout(promise, ms, message) {
+  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
+}
 
 /** Fetch a current Jito tip payment account (fetched live, not hardcoded — these addresses are Jito-managed and can change). */
 async function getTipAccount() {
   const now = Date.now();
   if (cachedTipAccount && now - cachedTipAccountAt < TIP_ACCOUNT_CACHE_MS) return cachedTipAccount;
 
-  const res = await fetch(`${JITO_BLOCK_ENGINE_URL}/bundles`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getTipAccounts", params: [] }),
-  });
+  const res = await fetchWithTimeout(
+    `${JITO_BLOCK_ENGINE_URL}/bundles`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getTipAccounts", params: [] }),
+    },
+    JITO_FETCH_TIMEOUT_MS,
+  );
   if (!res.ok) throw new Error(`getTipAccounts HTTP ${res.status}`);
   const data = await res.json();
   const accounts = data.result;
@@ -45,11 +71,15 @@ async function getTipAccount() {
 }
 
 async function submitBundle(signedTxBase64) {
-  const res = await fetch(`${JITO_BLOCK_ENGINE_URL}/bundles`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "sendBundle", params: [[signedTxBase64], { encoding: "base64" }] }),
-  });
+  const res = await fetchWithTimeout(
+    `${JITO_BLOCK_ENGINE_URL}/bundles`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "sendBundle", params: [[signedTxBase64], { encoding: "base64" }] }),
+    },
+    JITO_FETCH_TIMEOUT_MS,
+  );
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`sendBundle HTTP ${res.status}: ${body.slice(0, 200)}`);
@@ -90,7 +120,11 @@ export async function sendTransactionWithOptionalJito(connection, wallet, transa
     await submitBundle(serialized.toString("base64"));
 
     const signature = bs58.encode(transaction.signature);
-    const confirmation = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+    const confirmation = await withTimeout(
+      connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed"),
+      JITO_CONFIRM_TIMEOUT_MS,
+      `Jito bundle didn't confirm within ${JITO_CONFIRM_TIMEOUT_MS}ms`,
+    );
     if (confirmation.value.err) {
       throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
     }
