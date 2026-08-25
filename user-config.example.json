@@ -10,6 +10,8 @@
   "trailingDropPct": null,
   "_comment0e": "outOfRangeExitEnabled: on/off switch for the out-of-range exit below. Optional, defaults to true. Toggleable live via the Telegram bot's Settings button.",
   "outOfRangeExitEnabled": true,
+  "_comment0f": "outOfRangeRequireLeft: when true, the OOR-wait exit only fires on a sustained break to the downside ('OOR kiri' — base/memecoin price dropped below range), not a bullish breakout to the upside. Optional, defaults to false. Toggleable live via the Telegram bot's Settings button.",
+  "outOfRangeRequireLeft": false,
   "outOfRangeWaitMinutes": null,
   "minFeePerTvl24h": null,
   "minAgeBeforeYieldCheck": null,

@@ -189,6 +189,40 @@ test("updatePnlAndCheckExits fires OUT_OF_RANGE after the configured wait once o
   assert.equal(result.action, "OUT_OF_RANGE");
 });
 
+test("updatePnlAndCheckExits withholds OUT_OF_RANGE on a bullish (kanan) breakout when outOfRangeRequireLeft is set", () => {
+  ensurePositionTracked("posO", { in_range: false, oor_side: "above" });
+  const mgmt = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -50, trailingTakeProfit: false,
+    dualSideEnabled: false, outOfRangeExitEnabled: true, outOfRangeWaitMinutes: 0, outOfRangeRequireLeft: true,
+  };
+  const result = updatePnlAndCheckExits("posO", { ...baseTick, pnl_pct: 30, in_range: false, oor_side: "above" }, mgmt);
+  assert.equal(result, null);
+});
+
+test("updatePnlAndCheckExits still fires OUT_OF_RANGE on a bearish (kiri) breakout when outOfRangeRequireLeft is set", () => {
+  ensurePositionTracked("posP", { in_range: false, oor_side: "below" });
+  const mgmt = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -50, trailingTakeProfit: false,
+    dualSideEnabled: false, outOfRangeExitEnabled: true, outOfRangeWaitMinutes: 0, outOfRangeRequireLeft: true,
+  };
+  const result = updatePnlAndCheckExits("posP", { ...baseTick, pnl_pct: -10, in_range: false, oor_side: "below" }, mgmt);
+  assert.equal(result.action, "OUT_OF_RANGE");
+});
+
+test("outOfRangeRequireLeft: switching from kanan to kiri starts the wait timer fresh, not carrying over kanan's elapsed time", () => {
+  ensurePositionTracked("posQ", { in_range: false, oor_side: "above" });
+  const mgmt = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -50, trailingTakeProfit: false,
+    dualSideEnabled: false, outOfRangeExitEnabled: true, outOfRangeWaitMinutes: 10, outOfRangeRequireLeft: true,
+  };
+  // Been broken out kanan (bullish) for a while — must not count toward the kiri timer.
+  let result = updatePnlAndCheckExits("posQ", { ...baseTick, pnl_pct: 30, in_range: false, oor_side: "above" }, mgmt);
+  assert.equal(result, null);
+  // Flips to kiri just now — oor_left_since is fresh, so 10min wait hasn't elapsed yet.
+  result = updatePnlAndCheckExits("posQ", { ...baseTick, pnl_pct: -5, in_range: false, oor_side: "below" }, mgmt);
+  assert.equal(result, null);
+});
+
 // ── pending swap tracking ──
 
 test("recordFailedSwap tracks a mint and clearFailedSwap removes it", () => {

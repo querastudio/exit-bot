@@ -61,6 +61,13 @@ export function ensurePositionTracked(position_address, positionData) {
     // never changes after creation — reports use it as the true hold-duration start.
     first_deployed_at: new Date().toISOString(),
     out_of_range_since: positionData.in_range === false ? new Date().toISOString() : null,
+    // Duration tracked specifically for "OOR kiri" (price broke below range —
+    // bearish for the base/memecoin side), separate from out_of_range_since
+    // above (which counts ANY out-of-range direction). Needed so
+    // outOfRangeRequireLeft can gate the OOR-wait exit on sustained downside
+    // breakout only, without a bullish breakout's elapsed time counting
+    // toward it (see updatePnlAndCheckExits).
+    oor_left_since: positionData.oor_side === "below" ? new Date().toISOString() : null,
     closed: false,
     closed_at: null,
     peak_pnl_pct: 0,
@@ -408,6 +415,18 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     changed = true;
   }
 
+  // Same idea, but scoped to "OOR kiri" only — resets the moment the break
+  // stops being to the downside (price comes back in range, or the break
+  // flips to the upside), so a bullish breakout's elapsed time never counts
+  // toward a subsequent downside break's wait timer.
+  if (oor_side === "below" && !pos.oor_left_since) {
+    pos.oor_left_since = new Date().toISOString();
+    changed = true;
+  } else if (oor_side !== "below" && pos.oor_left_since) {
+    pos.oor_left_since = null;
+    changed = true;
+  }
+
   if (changed) save(state);
 
   // ── Grace period after deploy ──
@@ -522,13 +541,22 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   }
 
   // ── Out of range too long ──
-  if (mgmtConfig.outOfRangeExitEnabled && pos.out_of_range_since) {
-    const minutesOOR = Math.floor((Date.now() - new Date(pos.out_of_range_since).getTime()) / 60000);
-    if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
-      return {
-        action: "OUT_OF_RANGE",
-        reason: `Out of range for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
-      };
+  // outOfRangeRequireLeft: when true, only a sustained "OOR kiri" (price
+  // broke below range — bearish for the base/memecoin side) counts toward
+  // the wait timer. A bullish breakout to the upside (OOR kanan) is left
+  // alone here — that's often a good outcome, not a reason to force-close.
+  if (mgmtConfig.outOfRangeExitEnabled) {
+    const since = mgmtConfig.outOfRangeRequireLeft ? pos.oor_left_since : pos.out_of_range_since;
+    if (since) {
+      const minutesOOR = Math.floor((Date.now() - new Date(since).getTime()) / 60000);
+      if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
+        return {
+          action: "OUT_OF_RANGE",
+          reason:
+            `Out of range${mgmtConfig.outOfRangeRequireLeft ? " (kiri)" : ""} for ${minutesOOR}m` +
+            ` (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
+        };
+      }
     }
   }
 

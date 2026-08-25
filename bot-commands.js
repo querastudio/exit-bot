@@ -182,7 +182,7 @@ function buildSettingsText() {
     `TP (instant): ${m.takeProfitPct != null ? m.takeProfitPct + "%" : "OFF"}\n` +
     `SL (instant): ${m.stopLossPct}%${m.stopLossRequireOorLeft ? " (+ OOR kiri)" : ""}\n` +
     `Trailing: ${m.trailingTakeProfit ? "ON" : "OFF"} (trigger ${m.trailingTriggerPct}%, drop ${m.trailingDropPct}%)\n` +
-    `OOR wait: ${m.outOfRangeExitEnabled ? `ON (${m.outOfRangeWaitMinutes}m)` : "OFF"}\n` +
+    `OOR wait: ${m.outOfRangeExitEnabled ? `ON (${m.outOfRangeWaitMinutes}m${m.outOfRangeRequireLeft ? ", kiri only" : ""})` : "OFF"}\n` +
     `Confirm ticks: ${m.confirmTicks}x\n` +
     `<i>Bot ngecek PnL tiap ${config.poll.intervalSec} detik. Sinyal close (TP/SL/trailing/dll) baru beneran dieksekusi kalau kondisinya masih sama selama ${m.confirmTicks}x cek berturut-turut (≈${delaySec} detik), bukan langsung di cek pertama — biar bot gak salah tembak gara-gara harga sempat lonjak/anjlok sesaat doang.</i>\n\n` +
     `⚖️ <b>Strategi Dual Side</b>: ${m.dualSideEnabled ? "ON" : "OFF"}\n` +
@@ -204,6 +204,7 @@ function buildSettingsKeyboard() {
     ],
     [{ text: `SL + OOR kiri: ${m.stopLossRequireOorLeft ? "ON" : "OFF"}`, callback_data: "toggle_sl_oor_left" }],
     [{ text: `OOR wait: ${m.outOfRangeExitEnabled ? "ON" : "OFF"}`, callback_data: "toggle_oor_wait" }],
+    [{ text: `OOR wait kiri only: ${m.outOfRangeRequireLeft ? "ON" : "OFF"}`, callback_data: "toggle_oor_require_left" }],
     [{ text: `Confirm ticks: ${m.confirmTicks}x`, callback_data: "edit_confirm_ticks" }],
   ];
   if (m.outOfRangeExitEnabled) {
@@ -374,6 +375,15 @@ async function handleCallbackQuery(query) {
     const enabled = !config.management.outOfRangeExitEnabled;
     updateManagementSetting("outOfRangeExitEnabled", enabled);
     log("telegram-bot", `OOR wait exit ${enabled ? "enabled" : "disabled"} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
+  if (data === "toggle_oor_require_left") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.outOfRangeRequireLeft;
+    updateManagementSetting("outOfRangeRequireLeft", enabled);
+    log("telegram-bot", `OOR wait kiri-only ${enabled ? "enabled" : "disabled"} via Telegram`);
     await showSettings(messageId);
     return;
   }

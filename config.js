@@ -59,6 +59,12 @@ export const config = {
     // existing installs (where this exit has always been active) keep
     // behaving the same after upgrade. Toggleable live via Telegram Settings.
     outOfRangeExitEnabled: u.outOfRangeExitEnabled == null ? true : !!u.outOfRangeExitEnabled,
+    // When true, the OOR-wait exit only counts time spent broken out to the
+    // downside ("OOR kiri" — base/memecoin price dropped below range). A
+    // bullish breakout to the upside doesn't start/count toward this timer.
+    // Off by default (fires on either direction, same as before this option
+    // existed). Toggleable live via the Telegram Settings menu.
+    outOfRangeRequireLeft: !!u.outOfRangeRequireLeft,
     outOfRangeWaitMinutes: Number(u.outOfRangeWaitMinutes),
     minFeePerTvl24h: Number(u.minFeePerTvl24h),
     minAgeBeforeYieldCheck: Number(u.minAgeBeforeYieldCheck),
