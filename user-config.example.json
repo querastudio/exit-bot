@@ -43,11 +43,9 @@
   "swapSlippageBps": 500,
   "autoSwapAfterClose": true,
 
-  "_comment4": "Jito anti-MEV: submit close transactions via Jito Bundles (with a small tip) for faster/more reliable landing, instead of a plain RPC broadcast. Optional, defaults to off — off is byte-for-byte identical to before this feature existed. Toggleable live via the Telegram bot's Settings button. Only affects close transactions, not the post-close auto-swap (which already goes through Jupiter's own relay). NOTE: in practice this was unreliable (see priorityFeeMicroLamports below for the recommended alternative) — bundles frequently fail to land, which just adds latency with no benefit. Left in the code in case it's worth revisiting later.",
+  "_comment4": "Jito anti-MEV: submit close transactions via Jito Bundles (with a small tip) for faster/more reliable landing, instead of a plain RPC broadcast. Optional, defaults to off — off is byte-for-byte identical to before this feature existed. Toggleable live via the Telegram bot's Settings button. Only affects close transactions, not the post-close auto-swap (which already goes through Jupiter's own relay).",
   "jitoEnabled": false,
   "jitoTipLamports": 50000,
-  "_comment5": "Priority fee (native Solana fee-market mechanism, works with ANY validator — recommended over Jito above): adds a ComputeBudgetProgram.setComputeUnitPrice instruction to every close transaction so it lands faster during congestion. No external API dependency, so no failure mode to fall back from. Set to 0 to disable. Toggleable live via the Telegram bot's Settings button.",
-  "priorityFeeMicroLamports": 50000,
 
   "_comment3": "Global auto-exit kill-switch. Also toggleable live via Telegram /pause /resume — this is just the on-disk default.",
   "paused": false

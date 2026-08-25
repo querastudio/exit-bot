@@ -1,21 +1,7 @@
-import { PublicKey, ComputeBudgetProgram } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
 import { log } from "./logger.js";
 import { sendTransactionWithOptionalJito } from "./jito.js";
-
-/**
- * Prepend a priority-fee instruction (ComputeBudgetProgram.setComputeUnitPrice)
- * to a transaction, so it lands faster during congestion — this works with
- * ANY validator (not just Jito-connected ones) since it's a native Solana
- * fee-market mechanism, unlike Jito bundles which depend on winning a
- * separate off-chain auction. No-op if microLamports <= 0.
- */
-export function withPriorityFee(transaction, microLamports) {
-  if (microLamports > 0) {
-    transaction.instructions.unshift(ComputeBudgetProgram.setComputeUnitPrice({ microLamports }));
-  }
-  return transaction;
-}
 
 let _DLMM = null;
 async function getDlmmSdk() {
@@ -32,13 +18,7 @@ async function getDlmmSdk() {
  *   { success: true, txs: [...], base_mint }
  *   { success: false, error }
  */
-export async function closePositionOnChain(
-  connection,
-  wallet,
-  positionAddress,
-  poolAddress,
-  { jitoTipLamports = 0, priorityFeeMicroLamports = 0 } = {},
-) {
+export async function closePositionOnChain(connection, wallet, positionAddress, poolAddress, { jitoTipLamports = 0 } = {}) {
   const DLMM = await getDlmmSdk();
   let pool;
   try {
@@ -63,7 +43,7 @@ export async function closePositionOnChain(
     const positionData = await pool.getPosition(positionPubKey);
     const claimTxs = await pool.claimSwapFee({ owner: wallet.publicKey, position: positionData });
     for (const tx of claimTxs || []) {
-      const hash = await sendTransactionWithOptionalJito(connection, wallet, withPriorityFee(tx, priorityFeeMicroLamports), { jitoTipLamports });
+      const hash = await sendTransactionWithOptionalJito(connection, wallet, tx, { jitoTipLamports });
       claimTxHashes.push(hash);
     }
   } catch (e) {
@@ -98,13 +78,13 @@ export async function closePositionOnChain(
         shouldClaimAndClose: true,
       });
       for (const tx of Array.isArray(closeTx) ? closeTx : [closeTx]) {
-        const hash = await sendTransactionWithOptionalJito(connection, wallet, withPriorityFee(tx, priorityFeeMicroLamports), { jitoTipLamports });
+        const hash = await sendTransactionWithOptionalJito(connection, wallet, tx, { jitoTipLamports });
         closeTxHashes.push(hash);
       }
     } else {
       log("close", `No liquidity detected, closing empty position account ${positionAddress}`);
       const closeTx = await pool.closePosition({ owner: wallet.publicKey, position: { publicKey: positionPubKey } });
-      const hash = await sendTransactionWithOptionalJito(connection, wallet, withPriorityFee(closeTx, priorityFeeMicroLamports), { jitoTipLamports });
+      const hash = await sendTransactionWithOptionalJito(connection, wallet, closeTx, { jitoTipLamports });
       closeTxHashes.push(hash);
     }
   } catch (e) {

@@ -122,12 +122,6 @@ export const config = {
     // this feature existed. Toggleable live via the Telegram Settings menu.
     jitoEnabled: !!u.jitoEnabled,
     jitoTipLamports: Number(u.jitoTipLamports ?? 50000),
-    // Priority fee (native Solana fee-market mechanism — works with ANY
-    // validator, not just Jito-connected ones) added to every close
-    // transaction. Recommended over Jito for this bot: no external API
-    // dependency to fail, so no fallback/timeout complexity needed. Set to
-    // 0 to disable. Toggleable live via the Telegram Settings menu.
-    priorityFeeMicroLamports: Number(u.priorityFeeMicroLamports ?? 50000),
   },
   poll: {
     // How often (in seconds) the bot checks position PnL. NOT editable live —
