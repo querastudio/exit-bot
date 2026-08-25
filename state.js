@@ -8,17 +8,21 @@ import { fileURLToPath } from "url";
 import { log } from "./logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STATE_FILE = path.join(__dirname, "state.json");
+// Overridable so tests can point at a throwaway file instead of the real
+// state.json — production behavior (no env var set) is unchanged.
+const STATE_FILE = process.env.EXIT_BOT_STATE_FILE || path.join(__dirname, "state.json");
 
 function load() {
   if (!fs.existsSync(STATE_FILE)) {
-    return { positions: {}, lastUpdated: null };
+    return { positions: {}, pendingSwaps: {}, lastUpdated: null };
   }
   try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+    const state = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+    if (!state.pendingSwaps) state.pendingSwaps = {}; // back-compat with state.json written before this field existed
+    return state;
   } catch (err) {
     log("state_error", `Failed to read state.json: ${err.message}`);
-    return { positions: {}, lastUpdated: null };
+    return { positions: {}, pendingSwaps: {}, lastUpdated: null };
   }
 }
 
@@ -567,5 +571,39 @@ export function recordClose(position_address, action, reason, pnlPct = null) {
   pos.close_pnl_pct = pnlPct;
   save(state);
   log("state", `Position ${position_address.slice(0, 8)} marked closed: ${reason}`);
+}
+
+/**
+ * Track a token mint whose post-close auto-swap-to-SOL failed after all
+ * retries, so a periodic sweep (see actions.js's sweepPendingSwaps) can
+ * keep trying later instead of leaving it stuck in the wallet forever.
+ */
+export function recordFailedSwap(mint) {
+  if (!mint) return;
+  const state = load();
+  const existing = state.pendingSwaps[mint];
+  state.pendingSwaps[mint] = {
+    mint,
+    first_failed_at: existing?.first_failed_at || new Date().toISOString(),
+    last_attempt_at: new Date().toISOString(),
+    attempts: (existing?.attempts ?? 0) + 1,
+  };
+  save(state);
+}
+
+/** Clear a mint from the pending-swap list once it swaps successfully. */
+export function clearFailedSwap(mint) {
+  if (!mint) return;
+  const state = load();
+  if (state.pendingSwaps[mint]) {
+    delete state.pendingSwaps[mint];
+    save(state);
+  }
+}
+
+/** All mints currently waiting on a retry swap. */
+export function getPendingSwapMints() {
+  const state = load();
+  return Object.keys(state.pendingSwaps);
 }
 

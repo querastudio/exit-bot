@@ -26,8 +26,8 @@ import {
   inGracePeriod,
   isTopupSettling,
 } from "./state.js";
-import { telegramEnabled } from "./telegram.js";
-import { performClose } from "./actions.js";
+import { telegramEnabled, sendTelegram } from "./telegram.js";
+import { performClose, sweepPendingSwaps } from "./actions.js";
 import { startTelegramBot } from "./bot-commands.js";
 import { markTick } from "./status.js";
 
@@ -39,17 +39,52 @@ log("exit-bot", `Polling every ${POLL_MS}ms, confirmTicks=${config.management.co
 
 let ticking = false;
 let heartbeatSkip = 0;
+let sweepSkip = 0;
+const SWEEP_EVERY_N_TICKS = 20; // ~1min at the default 3s poll interval
+
+// ── Meteora API health tracking ──
+// fetchOpenPositions is the bot's only window into position state (it reads
+// off Meteora's indexer API, not on-chain directly — see positions.js). If
+// that API is down or unreachable, the bot silently can't see anything to
+// protect, but would otherwise just log a warning per tick and look
+// "running" from the outside. Alert once after enough consecutive failures
+// to rule out a single blip, and once more when it recovers.
+const API_FAILURE_ALERT_THRESHOLD = 20; // ~1min at the default 3s poll interval
+let consecutiveFetchFailures = 0;
+let apiDownAlerted = false;
 
 async function tick() {
   if (ticking) return; // guard against overlap while a slow close is in-flight
   ticking = true;
   markTick();
+
+  let positions;
   try {
-    const positions = await fetchOpenPositions(wallet.publicKey.toString(), {
+    positions = await fetchOpenPositions(wallet.publicKey.toString(), {
       solMode: config.management.solMode,
       checkDualSided: config.management.dualSideEnabled,
     });
+    consecutiveFetchFailures = 0;
+    if (apiDownAlerted) {
+      apiDownAlerted = false;
+      await sendTelegram("✅ Koneksi ke Meteora API pulih — bot kembali memantau posisi normal.").catch(() => {});
+    }
+  } catch (err) {
+    consecutiveFetchFailures++;
+    log("exit-bot_error", `Failed to fetch positions (${consecutiveFetchFailures}x in a row): ${err.message}`);
+    if (consecutiveFetchFailures === API_FAILURE_ALERT_THRESHOLD) {
+      apiDownAlerted = true;
+      await sendTelegram(
+        `⚠️ Gagal ambil data posisi dari Meteora API ${consecutiveFetchFailures}x berturut-turut ` +
+        `(~${Math.round((consecutiveFetchFailures * POLL_MS) / 1000)}s). Bot mungkin TIDAK bisa mendeteksi ` +
+        `kondisi exit sampai ini pulih — cek posisi secara manual kalau perlu.`,
+      ).catch(() => {});
+    }
+    ticking = false;
+    return;
+  }
 
+  try {
     if (positions.length === 0) {
       if (++heartbeatSkip >= 30) {
         heartbeatSkip = 0;
@@ -85,6 +120,11 @@ async function tick() {
     log("exit-bot_error", `Tick failed: ${err.stack || err.message}`);
   } finally {
     ticking = false;
+  }
+
+  if (++sweepSkip >= SWEEP_EVERY_N_TICKS) {
+    sweepSkip = 0;
+    sweepPendingSwaps().catch((err) => log("exit-bot_error", `Pending swap sweep failed: ${err.message}`));
   }
 }
 

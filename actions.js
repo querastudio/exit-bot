@@ -9,7 +9,7 @@ import { config } from "./config.js";
 import { log } from "./logger.js";
 import { closePositionOnChain } from "./close.js";
 import { getTokenBalance, swapToSol } from "./jupiter.js";
-import { recordClose } from "./state.js";
+import { recordClose, recordFailedSwap, clearFailedSwap, getPendingSwapMints } from "./state.js";
 import { sendTelegram, escapeHtml } from "./telegram.js";
 import { tryLock, unlock } from "./lock.js";
 
@@ -63,12 +63,18 @@ export async function performClose(position, action, reason, { source = "auto" }
         if (raw > 0n) {
           const swapResult = await swapToSol(wallet, result.base_mint, raw);
           if (swapResult.success && !swapResult.skipped) {
+            clearFailedSwap(result.base_mint);
             await sendTelegram(`Swap: ${escapeHtml(result.base_mint.slice(0, 8))}… → SOL ✅ (${escapeHtml(position.pair)})`);
           } else if (!swapResult.success) {
-            await sendTelegram(`⚠️ Auto-swap gagal, token sisa di wallet: ${escapeHtml(swapResult.error)} (${escapeHtml(position.pair)})`);
+            recordFailedSwap(result.base_mint);
+            await sendTelegram(
+              `⚠️ Auto-swap gagal, token sisa di wallet: ${escapeHtml(swapResult.error)} (${escapeHtml(position.pair)})\n` +
+              `Bot akan coba lagi otomatis secara berkala.`,
+            );
           }
         }
       } catch (e) {
+        recordFailedSwap(result.base_mint);
         await sendTelegram(`⚠️ Auto-swap error: ${escapeHtml(e.message)} (${escapeHtml(position.pair)})`);
       }
     }
@@ -76,5 +82,36 @@ export async function performClose(position, action, reason, { source = "auto" }
     return { locked: true, success: true, txs: result.txs };
   } finally {
     unlock(position.position);
+  }
+}
+
+/**
+ * Retry auto-swap-to-SOL for any token mints left over from a previously
+ * failed post-close swap (see performClose above). Called periodically from
+ * the tick loop — not on every tick, since a failed swap usually needs the
+ * market to calm down before it'll succeed, and hammering Jupiter every 3s
+ * would just waste rate limit for no benefit.
+ */
+export async function sweepPendingSwaps() {
+  const mints = getPendingSwapMints();
+  for (const mint of mints) {
+    try {
+      const { raw } = await getTokenBalance(connection, wallet.publicKey, mint);
+      if (raw <= 0n) {
+        // Nothing left to swap (manually moved/swapped already) — stop tracking it.
+        clearFailedSwap(mint);
+        continue;
+      }
+      const swapResult = await swapToSol(wallet, mint, raw);
+      if (swapResult.success && !swapResult.skipped) {
+        clearFailedSwap(mint);
+        log("swap", `Pending swap retry succeeded for ${mint.slice(0, 8)}`);
+        await sendTelegram(`Swap (retry): ${escapeHtml(mint.slice(0, 8))}… → SOL ✅`);
+      } else if (!swapResult.success) {
+        recordFailedSwap(mint);
+      }
+    } catch (e) {
+      log("exit-bot_error", `Pending swap retry error for ${mint.slice(0, 8)}: ${e.message}`);
+    }
   }
 }

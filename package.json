@@ -7,7 +7,8 @@
   "main": "index.js",
   "scripts": {
     "postinstall": "node scripts/patch-anchor.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@meteora-ag/dlmm": "1.9.4",
