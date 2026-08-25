@@ -186,7 +186,7 @@ function buildSettingsText() {
     `SL (instant): ${m.stopLossPct}%${m.stopLossRequireOorLeft ? " (+ OOR kiri)" : ""}\n` +
     `Trailing: ${m.trailingTakeProfit ? "ON" : "OFF"} (trigger ${m.trailingTriggerPct}%, drop ${m.trailingDropPct}%)\n` +
     `OOR wait: ${m.outOfRangeExitEnabled ? `ON (${m.outOfRangeWaitMinutes}m${m.outOfRangeRequireLeft ? ", kiri only" : ""})` : "OFF"}\n` +
-    `Low yield exit: ${m.lowYieldExitEnabled ? `ON (fee/TVL24h < ${m.minFeePerTvl24h}%, min age ${m.minAgeBeforeYieldCheck}m)` : "OFF"}\n` +
+    `Low yield exit: ${m.lowYieldExitEnabled ? `ON (fee/TVL24h &lt; ${m.minFeePerTvl24h}%, min age ${m.minAgeBeforeYieldCheck}m)` : "OFF"}\n` +
     `Confirm ticks: ${m.confirmTicks}x\n` +
     `<i>Bot ngecek PnL tiap ${config.poll.intervalSec} detik. Sinyal close (TP/SL/trailing/dll) baru beneran dieksekusi kalau kondisinya masih sama selama ${m.confirmTicks}x cek berturut-turut (≈${delaySec} detik), bukan langsung di cek pertama — biar bot gak salah tembak gara-gara harga sempat lonjak/anjlok sesaat doang.</i>\n\n` +
     `⚖️ <b>Strategi Dual Side</b>: ${m.dualSideEnabled ? "ON" : "OFF"}\n` +
