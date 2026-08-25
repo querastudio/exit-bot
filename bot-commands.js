@@ -41,6 +41,7 @@ const SETTING_LABELS = {
   trailingTriggerPct: "Trailing trigger %",
   trailingDropPct: "Trailing drop %",
   outOfRangeWaitMinutes: "OOR wait (menit)",
+  jitoTipLamports: "Jito tip (lamports)",
   dualSideTakeProfitPct: "Dual Side TP %",
   dualSideStopLossPct: "Dual Side SL %",
   dualSideTrailingTriggerPct: "Dual Side Trailing trigger %",
@@ -187,6 +188,7 @@ function buildSettingsText() {
     `<i>Bot ngecek PnL tiap ${config.poll.intervalSec} detik. Sinyal close (TP/SL/trailing/dll) baru beneran dieksekusi kalau kondisinya masih sama selama ${m.confirmTicks}x cek berturut-turut (≈${delaySec} detik), bukan langsung di cek pertama — biar bot gak salah tembak gara-gara harga sempat lonjak/anjlok sesaat doang.</i>\n\n` +
     `⚖️ <b>Strategi Dual Side</b>: ${m.dualSideEnabled ? "ON" : "OFF"}\n` +
     dualSideLine +
+    `\n🛡️ <b>Jito anti-MEV</b>: ${m.jitoEnabled ? `ON (tip ${m.jitoTipLamports} lamports)` : "OFF"}\n` +
     `\nTap salah satu buat ubah nilainya.`
   );
 }
@@ -225,6 +227,10 @@ function buildSettingsKeyboard() {
       ]);
     }
   }
+  rows.push([{ text: `🛡️ Jito anti-MEV: ${m.jitoEnabled ? "ON" : "OFF"}`, callback_data: "toggle_jito" }]);
+  if (m.jitoEnabled) {
+    rows.push([{ text: `Jito tip: ${m.jitoTipLamports} lamports`, callback_data: "edit_jito_tip" }]);
+  }
   rows.push([{ text: "⬅️ Back", callback_data: "back_to_positions" }]);
   return { inline_keyboard: rows };
 }
@@ -258,6 +264,7 @@ async function handleMessage(msg) {
     }
     const key = awaitingSetting;
     if (key === "confirmTicks") value = Math.max(1, Math.round(value));
+    if (key === "jitoTipLamports") value = Math.max(0, Math.round(value));
     awaitingSetting = null;
     updateManagementSetting(key, value);
     log("telegram-bot", `Setting ${key} updated to ${value} via Telegram`);
@@ -416,6 +423,15 @@ async function handleCallbackQuery(query) {
     return;
   }
 
+  if (data === "toggle_jito") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.jitoEnabled;
+    updateManagementSetting("jitoEnabled", enabled);
+    log("telegram-bot", `Jito anti-MEV ${enabled ? "enabled" : "disabled"} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
   if (data === "open_settings") {
     await answerCallbackQuery(query.id);
     await showSettings(messageId);
@@ -434,6 +450,7 @@ async function handleCallbackQuery(query) {
       edit_dual_trail_trigger: "dualSideTrailingTriggerPct",
       edit_dual_trail_drop: "dualSideTrailingDropPct",
       edit_confirm_ticks: "confirmTicks",
+      edit_jito_tip: "jitoTipLamports",
     };
     const key = map[data];
     if (!key) {

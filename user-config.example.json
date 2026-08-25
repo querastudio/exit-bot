@@ -43,6 +43,10 @@
   "swapSlippageBps": 500,
   "autoSwapAfterClose": true,
 
+  "_comment4": "Jito anti-MEV: submit close transactions via Jito Bundles (with a small tip) for faster/more reliable landing, instead of a plain RPC broadcast. Optional, defaults to off — off is byte-for-byte identical to before this feature existed. Toggleable live via the Telegram bot's Settings button. Only affects close transactions, not the post-close auto-swap (which already goes through Jupiter's own relay).",
+  "jitoEnabled": false,
+  "jitoTipLamports": 50000,
+
   "_comment3": "Global auto-exit kill-switch. Also toggleable live via Telegram /pause /resume — this is just the on-disk default.",
   "paused": false
 }

@@ -33,7 +33,9 @@ export async function performClose(position, action, reason, { source = "auto" }
 
   try {
     log("exit-bot", `${action} triggered for ${position.pair} (${position.position}) [${source}]: ${reason}`);
-    const result = await closePositionOnChain(connection, wallet, position.position, position.pool);
+    const result = await closePositionOnChain(connection, wallet, position.position, position.pool, {
+      jitoTipLamports: config.management.jitoEnabled ? config.management.jitoTipLamports : 0,
+    });
 
     if (!result.success) {
       log("exit-bot_error", `Close failed for ${position.pair} (${position.position}): ${result.error}`);

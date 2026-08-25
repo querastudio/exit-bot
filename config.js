@@ -115,6 +115,13 @@ export const config = {
     // "PnL first crosses the threshold" to "close fires" is roughly
     // confirmTicks × poll.intervalSec seconds.
     confirmTicks: Math.max(1, Number(u.confirmTicks ?? 2)),
+    // Optional: submit close transactions via Jito Bundles (with a small
+    // tip) instead of a plain RPC broadcast, for faster/more reliable
+    // landing during congestion — see jito.js. Off by default; with this
+    // off, close.js's send behavior is byte-for-byte identical to before
+    // this feature existed. Toggleable live via the Telegram Settings menu.
+    jitoEnabled: !!u.jitoEnabled,
+    jitoTipLamports: Number(u.jitoTipLamports ?? 50000),
   },
   poll: {
     // How often (in seconds) the bot checks position PnL. NOT editable live —

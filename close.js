@@ -1,6 +1,7 @@
-import { PublicKey, sendAndConfirmTransaction } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
 import { log } from "./logger.js";
+import { sendTransactionWithOptionalJito } from "./jito.js";
 
 let _DLMM = null;
 async function getDlmmSdk() {
@@ -17,7 +18,7 @@ async function getDlmmSdk() {
  *   { success: true, txs: [...], base_mint }
  *   { success: false, error }
  */
-export async function closePositionOnChain(connection, wallet, positionAddress, poolAddress) {
+export async function closePositionOnChain(connection, wallet, positionAddress, poolAddress, { jitoTipLamports = 0 } = {}) {
   const DLMM = await getDlmmSdk();
   let pool;
   try {
@@ -42,7 +43,7 @@ export async function closePositionOnChain(connection, wallet, positionAddress, 
     const positionData = await pool.getPosition(positionPubKey);
     const claimTxs = await pool.claimSwapFee({ owner: wallet.publicKey, position: positionData });
     for (const tx of claimTxs || []) {
-      const hash = await sendAndConfirmTransaction(connection, tx, [wallet]);
+      const hash = await sendTransactionWithOptionalJito(connection, wallet, tx, { jitoTipLamports });
       claimTxHashes.push(hash);
     }
   } catch (e) {
@@ -77,13 +78,13 @@ export async function closePositionOnChain(connection, wallet, positionAddress, 
         shouldClaimAndClose: true,
       });
       for (const tx of Array.isArray(closeTx) ? closeTx : [closeTx]) {
-        const hash = await sendAndConfirmTransaction(connection, tx, [wallet]);
+        const hash = await sendTransactionWithOptionalJito(connection, wallet, tx, { jitoTipLamports });
         closeTxHashes.push(hash);
       }
     } else {
       log("close", `No liquidity detected, closing empty position account ${positionAddress}`);
       const closeTx = await pool.closePosition({ owner: wallet.publicKey, position: { publicKey: positionPubKey } });
-      const hash = await sendAndConfirmTransaction(connection, closeTx, [wallet]);
+      const hash = await sendTransactionWithOptionalJito(connection, wallet, closeTx, { jitoTipLamports });
       closeTxHashes.push(hash);
     }
   } catch (e) {
