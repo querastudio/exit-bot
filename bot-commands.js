@@ -41,6 +41,8 @@ const SETTING_LABELS = {
   trailingTriggerPct: "Trailing trigger %",
   trailingDropPct: "Trailing drop %",
   outOfRangeWaitMinutes: "OOR wait (menit)",
+  minFeePerTvl24h: "Min fee/TVL 24h (%)",
+  minAgeBeforeYieldCheck: "Min umur posisi sebelum cek yield (menit)",
   jitoTipLamports: "Jito tip (lamports)",
   dualSideTakeProfitPct: "Dual Side TP %",
   dualSideStopLossPct: "Dual Side SL %",
@@ -184,6 +186,7 @@ function buildSettingsText() {
     `SL (instant): ${m.stopLossPct}%${m.stopLossRequireOorLeft ? " (+ OOR kiri)" : ""}\n` +
     `Trailing: ${m.trailingTakeProfit ? "ON" : "OFF"} (trigger ${m.trailingTriggerPct}%, drop ${m.trailingDropPct}%)\n` +
     `OOR wait: ${m.outOfRangeExitEnabled ? `ON (${m.outOfRangeWaitMinutes}m${m.outOfRangeRequireLeft ? ", kiri only" : ""})` : "OFF"}\n` +
+    `Low yield exit: ${m.lowYieldExitEnabled ? `ON (fee/TVL24h < ${m.minFeePerTvl24h}%, min age ${m.minAgeBeforeYieldCheck}m)` : "OFF"}\n` +
     `Confirm ticks: ${m.confirmTicks}x\n` +
     `<i>Bot ngecek PnL tiap ${config.poll.intervalSec} detik. Sinyal close (TP/SL/trailing/dll) baru beneran dieksekusi kalau kondisinya masih sama selama ${m.confirmTicks}x cek berturut-turut (≈${delaySec} detik), bukan langsung di cek pertama — biar bot gak salah tembak gara-gara harga sempat lonjak/anjlok sesaat doang.</i>\n\n` +
     `⚖️ <b>Strategi Dual Side</b>: ${m.dualSideEnabled ? "ON" : "OFF"}\n` +
@@ -211,6 +214,13 @@ function buildSettingsKeyboard() {
   ];
   if (m.outOfRangeExitEnabled) {
     rows.push([{ text: `OOR wait: ${m.outOfRangeWaitMinutes}m`, callback_data: "edit_oor_wait" }]);
+  }
+  rows.push([{ text: `Low yield exit: ${m.lowYieldExitEnabled ? "ON" : "OFF"}`, callback_data: "toggle_low_yield" }]);
+  if (m.lowYieldExitEnabled) {
+    rows.push([
+      { text: `Min fee/TVL24h: ${m.minFeePerTvl24h}%`, callback_data: "edit_min_fee_tvl" },
+      { text: `Min age: ${m.minAgeBeforeYieldCheck}m`, callback_data: "edit_min_age_yield" },
+    ]);
   }
   rows.push([{ text: `⚖️ Dual Side: ${m.dualSideEnabled ? "ON" : "OFF"}`, callback_data: "toggle_dual_side" }]);
   if (m.dualSideEnabled) {
@@ -265,6 +275,7 @@ async function handleMessage(msg) {
     const key = awaitingSetting;
     if (key === "confirmTicks") value = Math.max(1, Math.round(value));
     if (key === "jitoTipLamports") value = Math.max(0, Math.round(value));
+    if (key === "minAgeBeforeYieldCheck" || key === "outOfRangeWaitMinutes") value = Math.max(0, Math.round(value));
     awaitingSetting = null;
     updateManagementSetting(key, value);
     log("telegram-bot", `Setting ${key} updated to ${value} via Telegram`);
@@ -377,6 +388,15 @@ async function handleCallbackQuery(query) {
     return;
   }
 
+  if (data === "toggle_low_yield") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.lowYieldExitEnabled;
+    updateManagementSetting("lowYieldExitEnabled", enabled);
+    log("telegram-bot", `Low yield exit ${enabled ? "enabled" : "disabled"} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
   if (data === "toggle_oor_wait") {
     await answerCallbackQuery(query.id);
     const enabled = !config.management.outOfRangeExitEnabled;
@@ -445,6 +465,8 @@ async function handleCallbackQuery(query) {
       edit_trigger: "trailingTriggerPct",
       edit_trail: "trailingDropPct",
       edit_oor_wait: "outOfRangeWaitMinutes",
+      edit_min_fee_tvl: "minFeePerTvl24h",
+      edit_min_age_yield: "minAgeBeforeYieldCheck",
       edit_dual_tp: "dualSideTakeProfitPct",
       edit_dual_sl: "dualSideStopLossPct",
       edit_dual_trail_trigger: "dualSideTrailingTriggerPct",

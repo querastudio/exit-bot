@@ -223,6 +223,28 @@ test("outOfRangeRequireLeft: switching from kanan to kiri starts the wait timer 
   assert.equal(result, null);
 });
 
+test("updatePnlAndCheckExits fires LOW_YIELD when enabled and fee/TVL is below threshold past min age", () => {
+  ensurePositionTracked("posR", { in_range: true });
+  const mgmt = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -50, trailingTakeProfit: false,
+    dualSideEnabled: false, outOfRangeExitEnabled: false,
+    lowYieldExitEnabled: true, minFeePerTvl24h: 0.5, minAgeBeforeYieldCheck: 60,
+  };
+  const result = updatePnlAndCheckExits("posR", { ...baseTick, pnl_pct: 0, fee_per_tvl_24h: 0.1, age_minutes: 90 }, mgmt);
+  assert.equal(result.action, "LOW_YIELD");
+});
+
+test("updatePnlAndCheckExits withholds LOW_YIELD when lowYieldExitEnabled is false", () => {
+  ensurePositionTracked("posS", { in_range: true });
+  const mgmt = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -50, trailingTakeProfit: false,
+    dualSideEnabled: false, outOfRangeExitEnabled: false,
+    lowYieldExitEnabled: false, minFeePerTvl24h: 0.5, minAgeBeforeYieldCheck: 60,
+  };
+  const result = updatePnlAndCheckExits("posS", { ...baseTick, pnl_pct: 0, fee_per_tvl_24h: 0.1, age_minutes: 90 }, mgmt);
+  assert.equal(result, null);
+});
+
 // ── pending swap tracking ──
 
 test("recordFailedSwap tracks a mint and clearFailedSwap removes it", () => {

@@ -66,6 +66,10 @@ export const config = {
     // existed). Toggleable live via the Telegram Settings menu.
     outOfRangeRequireLeft: !!u.outOfRangeRequireLeft,
     outOfRangeWaitMinutes: Number(u.outOfRangeWaitMinutes),
+    // On/off switch for the low-yield exit below — defaults to true so
+    // existing installs (where this exit has always been active) keep
+    // behaving the same after upgrade. Toggleable live via Telegram Settings.
+    lowYieldExitEnabled: u.lowYieldExitEnabled == null ? true : !!u.lowYieldExitEnabled,
     minFeePerTvl24h: Number(u.minFeePerTvl24h),
     minAgeBeforeYieldCheck: Number(u.minAgeBeforeYieldCheck),
     solMode: !!u.solMode,
