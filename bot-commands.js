@@ -27,6 +27,7 @@ import {
 
 const BOT_COMMANDS = [
   { command: "positions", description: "Lihat & kelola posisi aktif" },
+  { command: "settings", description: "Setting TP/SL/trailing/dll" },
   { command: "status", description: "Status bot (uptime, RPC, saldo)" },
   { command: "pause", description: "Pause auto-exit" },
   { command: "resume", description: "Resume auto-exit" },
@@ -290,6 +291,11 @@ async function handleMessage(msg) {
 
   if (text === "/status") {
     await sendTelegram(await buildStatusText());
+    return;
+  }
+
+  if (text === "/settings") {
+    await showSettings();
     return;
   }
 
