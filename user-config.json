@@ -46,6 +46,8 @@
   "_comment4": "Jito anti-MEV: submit close transactions via Jito Bundles (with a small tip) for faster/more reliable landing. Only affects close transactions, not the post-close auto-swap (which already goes through Jupiter's own relay). Toggleable live via the Telegram bot's Settings button. Disabled after live testing: 9/9 bundles across 2 regions and 2 tip levels failed to land, only adding latency to every close.",
   "jitoEnabled": false,
   "jitoTipLamports": 200000,
+  "_comment5": "Priority fee (native Solana fee-market mechanism, works with ANY validator — the recommended replacement for Jito above after it proved unreliable). Toggleable live via the Telegram bot's Settings button.",
+  "priorityFeeMicroLamports": 50000,
 
   "_comment3": "Global auto-exit kill-switch. Also toggleable live via Telegram /pause /resume — this is just the on-disk default.",
   "paused": false

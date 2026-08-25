@@ -42,6 +42,7 @@ const SETTING_LABELS = {
   trailingDropPct: "Trailing drop %",
   outOfRangeWaitMinutes: "OOR wait (menit)",
   jitoTipLamports: "Jito tip (lamports)",
+  priorityFeeMicroLamports: "Priority fee (microLamports/CU)",
   dualSideTakeProfitPct: "Dual Side TP %",
   dualSideStopLossPct: "Dual Side SL %",
   dualSideTrailingTriggerPct: "Dual Side Trailing trigger %",
@@ -189,6 +190,7 @@ function buildSettingsText() {
     `⚖️ <b>Strategi Dual Side</b>: ${m.dualSideEnabled ? "ON" : "OFF"}\n` +
     dualSideLine +
     `\n🛡️ <b>Jito anti-MEV</b>: ${m.jitoEnabled ? `ON (tip ${m.jitoTipLamports} lamports)` : "OFF"}\n` +
+    `⚡ <b>Priority fee</b>: ${m.priorityFeeMicroLamports > 0 ? `${m.priorityFeeMicroLamports} microLamports/CU` : "OFF"}\n` +
     `\nTap salah satu buat ubah nilainya.`
   );
 }
@@ -231,6 +233,7 @@ function buildSettingsKeyboard() {
   if (m.jitoEnabled) {
     rows.push([{ text: `Jito tip: ${m.jitoTipLamports} lamports`, callback_data: "edit_jito_tip" }]);
   }
+  rows.push([{ text: `Priority fee: ${m.priorityFeeMicroLamports} microLamports/CU`, callback_data: "edit_priority_fee" }]);
   rows.push([{ text: "⬅️ Back", callback_data: "back_to_positions" }]);
   return { inline_keyboard: rows };
 }
@@ -264,7 +267,7 @@ async function handleMessage(msg) {
     }
     const key = awaitingSetting;
     if (key === "confirmTicks") value = Math.max(1, Math.round(value));
-    if (key === "jitoTipLamports") value = Math.max(0, Math.round(value));
+    if (key === "jitoTipLamports" || key === "priorityFeeMicroLamports") value = Math.max(0, Math.round(value));
     awaitingSetting = null;
     updateManagementSetting(key, value);
     log("telegram-bot", `Setting ${key} updated to ${value} via Telegram`);
@@ -451,6 +454,7 @@ async function handleCallbackQuery(query) {
       edit_dual_trail_drop: "dualSideTrailingDropPct",
       edit_confirm_ticks: "confirmTicks",
       edit_jito_tip: "jitoTipLamports",
+      edit_priority_fee: "priorityFeeMicroLamports",
     };
     const key = map[data];
     if (!key) {
