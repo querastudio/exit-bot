@@ -6,7 +6,8 @@
   "description": "Standalone Meteora DLMM exit bot — monitors manually-deployed positions and closes them on trailing TP / stop loss / out-of-range.",
   "main": "index.js",
   "scripts": {
-    "postinstall": "node scripts/patch-anchor.js"
+    "postinstall": "node scripts/patch-anchor.js",
+    "start": "node index.js"
   },
   "dependencies": {
     "@meteora-ag/dlmm": "1.9.4",
