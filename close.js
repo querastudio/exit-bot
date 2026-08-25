@@ -18,7 +18,7 @@ async function getDlmmSdk() {
  *   { success: true, txs: [...], base_mint }
  *   { success: false, error }
  */
-export async function closePositionOnChain(connection, wallet, positionAddress, poolAddress, { jitoTipLamports = 0 } = {}) {
+export async function closePositionOnChain(connection, wallet, positionAddress, poolAddress, { jitoEnabled = false, jitoTipLamports = 0 } = {}) {
   const DLMM = await getDlmmSdk();
   let pool;
   try {
@@ -43,7 +43,7 @@ export async function closePositionOnChain(connection, wallet, positionAddress, 
     const positionData = await pool.getPosition(positionPubKey);
     const claimTxs = await pool.claimSwapFee({ owner: wallet.publicKey, position: positionData });
     for (const tx of claimTxs || []) {
-      const hash = await sendTransactionWithOptionalJito(connection, wallet, tx, { jitoTipLamports });
+      const hash = await sendTransactionWithOptionalJito(connection, wallet, tx, { jitoEnabled, jitoTipLamports });
       claimTxHashes.push(hash);
     }
   } catch (e) {
@@ -78,13 +78,13 @@ export async function closePositionOnChain(connection, wallet, positionAddress, 
         shouldClaimAndClose: true,
       });
       for (const tx of Array.isArray(closeTx) ? closeTx : [closeTx]) {
-        const hash = await sendTransactionWithOptionalJito(connection, wallet, tx, { jitoTipLamports });
+        const hash = await sendTransactionWithOptionalJito(connection, wallet, tx, { jitoEnabled, jitoTipLamports });
         closeTxHashes.push(hash);
       }
     } else {
       log("close", `No liquidity detected, closing empty position account ${positionAddress}`);
       const closeTx = await pool.closePosition({ owner: wallet.publicKey, position: { publicKey: positionPubKey } });
-      const hash = await sendTransactionWithOptionalJito(connection, wallet, closeTx, { jitoTipLamports });
+      const hash = await sendTransactionWithOptionalJito(connection, wallet, closeTx, { jitoEnabled, jitoTipLamports });
       closeTxHashes.push(hash);
     }
   } catch (e) {

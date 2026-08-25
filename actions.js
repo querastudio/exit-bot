@@ -34,7 +34,8 @@ export async function performClose(position, action, reason, { source = "auto" }
   try {
     log("exit-bot", `${action} triggered for ${position.pair} (${position.position}) [${source}]: ${reason}`);
     const result = await closePositionOnChain(connection, wallet, position.position, position.pool, {
-      jitoTipLamports: config.management.jitoEnabled ? config.management.jitoTipLamports : 0,
+      jitoEnabled: config.management.jitoEnabled,
+      jitoTipLamports: config.management.jitoTipLamports,
     });
 
     if (!result.success) {

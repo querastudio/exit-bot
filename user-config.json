@@ -43,8 +43,8 @@
   "swapSlippageBps": 500,
   "autoSwapAfterClose": true,
 
-  "_comment4": "Jito anti-MEV: submit close transactions via Jito Bundles (with a small tip) for faster/more reliable landing. Only affects close transactions, not the post-close auto-swap (which already goes through Jupiter's own relay). Toggleable live via the Telegram bot's Settings button. Disabled after live testing: 9/9 bundles across 2 regions and 2 tip levels failed to land, only adding latency to every close.",
-  "jitoEnabled": false,
+  "_comment4": "Jito anti-MEV: uses Jito's official DontFront technique (solana.com/docs/defi/mev-protection) — a marker account added to the transaction so the Jito block engine guarantees no other tx can be placed ahead of it, sent via sendTransaction (not sendBundle, which failed 9/9 in earlier testing). Optionally still attaches a tip for faster landing. Only affects close transactions, not the post-close auto-swap. Toggleable live via the Telegram bot's Settings button.",
+  "jitoEnabled": true,
   "jitoTipLamports": 200000,
 
   "_comment3": "Global auto-exit kill-switch. Also toggleable live via Telegram /pause /resume — this is just the on-disk default.",
