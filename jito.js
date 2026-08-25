@@ -27,7 +27,7 @@ const TIP_ACCOUNT_CACHE_MS = 5 * 60 * 1000;
 // validity window (~60-90s) — with claim+remove+close being up to 3
 // sequential transactions, that turned "close a position" into minutes.
 const JITO_FETCH_TIMEOUT_MS = 5000;
-const JITO_CONFIRM_TIMEOUT_MS = 12000;
+const JITO_CONFIRM_TIMEOUT_MS = 15000;
 
 let cachedTipAccount = null;
 let cachedTipAccountAt = 0;
