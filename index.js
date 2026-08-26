@@ -27,7 +27,7 @@ import {
   isTopupSettling,
   consumeRecoveryAlert,
 } from "./state.js";
-import { telegramEnabled, sendTelegram } from "./telegram.js";
+import { telegramEnabled, sendTelegram, escapeHtml } from "./telegram.js";
 import { performClose, sweepPendingSwaps } from "./actions.js";
 import { startTelegramBot } from "./bot-commands.js";
 import { markTick } from "./status.js";
@@ -149,3 +149,30 @@ process.on("SIGTERM", () => {
   log("exit-bot", "Shutting down...");
   process.exit(0);
 });
+
+/**
+ * Last-resort handler for errors that escape every try/catch in the app —
+ * without this, the process would either crash silently (Railway restarts
+ * it, but with zero notice) or, worse, keep running in an undefined state
+ * with no polling actually happening. Best-effort notify Telegram, then
+ * exit so Railway's restart policy brings it back cleanly. The exit is
+ * hard-bounded to 5s so a hung Telegram call can never keep the process
+ * alive in a broken state.
+ */
+function crashAndExit(label, err) {
+  const message = err?.stack || err?.message || String(err);
+  log("exit-bot_error", `${label}: ${message}`);
+  const forceExit = setTimeout(() => process.exit(1), 5000);
+  sendTelegram(
+    `🛑 <b>Bot crash</b> (${escapeHtml(label)}): ${escapeHtml(String(err?.message || err)).slice(0, 300)}\n` +
+    `Proses akan restart otomatis.`,
+  )
+    .catch(() => {})
+    .finally(() => {
+      clearTimeout(forceExit);
+      process.exit(1);
+    });
+}
+
+process.on("uncaughtException", (err) => crashAndExit("uncaught exception", err));
+process.on("unhandledRejection", (reason) => crashAndExit("unhandled rejection", reason));
