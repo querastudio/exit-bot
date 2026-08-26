@@ -120,6 +120,7 @@ export async function sendTransactionWithOptionalJito(connection, wallet, transa
     return sendAndConfirmTransaction(connection, transaction, [wallet]);
   }
 
+  let tipInstructionAdded = false;
   try {
     withDontFront(transaction);
 
@@ -132,6 +133,7 @@ export async function sendTransactionWithOptionalJito(connection, wallet, transa
           lamports: jitoTipLamports,
         }),
       );
+      tipInstructionAdded = true;
     }
 
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
@@ -155,6 +157,13 @@ export async function sendTransactionWithOptionalJito(connection, wallet, transa
     log("jito", `Sent via Jito DontFront${jitoTipLamports > 0 ? ` (tip ${jitoTipLamports} lamports)` : ""}, tx: ${signature}`);
     return signature;
   } catch (err) {
+    // The tip transfer only makes sense if Jito actually used it — strip it
+    // back out before falling back, so a Jito failure never costs a real
+    // tip payment for nothing. It's always the last instruction added
+    // (nothing is appended after it above), so popping it is exact.
+    if (tipInstructionAdded) {
+      transaction.instructions.pop();
+    }
     log("jito_warn", `Jito path failed (${err.message}) — falling back to normal RPC send`);
     return sendAndConfirmTransaction(connection, transaction, [wallet]);
   }
