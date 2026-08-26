@@ -26,10 +26,15 @@ const {
   recordFailedSwap,
   clearFailedSwap,
   getPendingSwapMints,
+  consumeRecoveryAlert,
 } = await import("../state.js");
+
+const TEST_STATE_BACKUP_FILE = TEST_STATE_FILE + ".bak";
 
 function resetStateFile() {
   if (fs.existsSync(TEST_STATE_FILE)) fs.unlinkSync(TEST_STATE_FILE);
+  if (fs.existsSync(TEST_STATE_BACKUP_FILE)) fs.unlinkSync(TEST_STATE_BACKUP_FILE);
+  consumeRecoveryAlert(); // drain any pending flag from a previous test
 }
 
 beforeEach(resetStateFile);
@@ -255,4 +260,36 @@ test("recordFailedSwap tracks a mint and clearFailedSwap removes it", () => {
   assert.deepEqual(getPendingSwapMints(), ["MintABC"]);
   clearFailedSwap("MintABC");
   assert.deepEqual(getPendingSwapMints(), []);
+});
+
+// ── backup / corruption recovery ──
+
+test("a successful save backs up the previous valid state before overwriting", () => {
+  ensurePositionTracked("posT", {});
+  assert.ok(!fs.existsSync(TEST_STATE_BACKUP_FILE), "no backup expected before the second save");
+
+  ensurePositionTracked("posU", {}); // second save() call — should back up the state from after posT was written
+  assert.ok(fs.existsSync(TEST_STATE_BACKUP_FILE));
+  const backup = JSON.parse(fs.readFileSync(TEST_STATE_BACKUP_FILE, "utf8"));
+  assert.ok(backup.positions.posT, "backup should reflect state as of just before this save");
+  assert.ok(!backup.positions.posU, "backup should NOT yet include the write that triggered it");
+});
+
+test("load() recovers from the backup and flags it when state.json is corrupted", () => {
+  ensurePositionTracked("posV", {});
+  ensurePositionTracked("posW", {}); // creates a backup containing posV
+  fs.writeFileSync(TEST_STATE_FILE, "{ not valid json ][");
+
+  assert.equal(consumeRecoveryAlert(), false); // nothing consumed yet
+  const pos = getTrackedPosition("posV");
+  assert.ok(pos, "should recover posV from the backup after the main file was corrupted");
+  assert.equal(consumeRecoveryAlert(), true, "recovery should be flagged exactly once");
+  assert.equal(consumeRecoveryAlert(), false, "flag auto-clears after being consumed");
+});
+
+test("load() starts fresh (no throw) when both state.json and its backup are corrupted", () => {
+  fs.writeFileSync(TEST_STATE_FILE, "{ broken");
+  fs.writeFileSync(TEST_STATE_BACKUP_FILE, "{ also broken");
+  const pos = getTrackedPosition("anything");
+  assert.equal(pos, null);
 });

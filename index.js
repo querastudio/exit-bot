@@ -25,6 +25,7 @@ import {
   detectPnlSpike,
   inGracePeriod,
   isTopupSettling,
+  consumeRecoveryAlert,
 } from "./state.js";
 import { telegramEnabled, sendTelegram } from "./telegram.js";
 import { performClose, sweepPendingSwaps } from "./actions.js";
@@ -120,6 +121,13 @@ async function tick() {
     log("exit-bot_error", `Tick failed: ${err.stack || err.message}`);
   } finally {
     ticking = false;
+  }
+
+  if (consumeRecoveryAlert()) {
+    await sendTelegram(
+      "⚠️ <b>state.json korup terdeteksi</b> — bot otomatis pulih dari backup (state.json.bak). " +
+      "Sebagian tracking (peak/trailing) mungkin mundur beberapa detik ke versi backup terakhir, tapi bot tetap jalan normal.",
+    ).catch(() => {});
   }
 
   if (++sweepSkip >= SWEEP_EVERY_N_TICKS) {

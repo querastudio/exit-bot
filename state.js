@@ -11,23 +11,67 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Overridable so tests can point at a throwaway file instead of the real
 // state.json — production behavior (no env var set) is unchanged.
 const STATE_FILE = process.env.EXIT_BOT_STATE_FILE || path.join(__dirname, "state.json");
+const STATE_BACKUP_FILE = STATE_FILE + ".bak";
+
+function emptyState() {
+  return { positions: {}, pendingSwaps: {}, lastUpdated: null };
+}
+
+function normalize(state) {
+  if (!state.pendingSwaps) state.pendingSwaps = {}; // back-compat with state.json written before this field existed
+  return state;
+}
+
+// Set (and auto-cleared on read) whenever load() had to fall back to the
+// backup because the main state.json failed to parse — index.js's tick
+// loop checks this once per tick to alert Telegram, since state.js itself
+// has no Telegram dependency (keeps it side-effect-free and test-safe).
+let recoveredFromBackupPending = false;
+export function consumeRecoveryAlert() {
+  if (!recoveredFromBackupPending) return false;
+  recoveredFromBackupPending = false;
+  return true;
+}
 
 function load() {
   if (!fs.existsSync(STATE_FILE)) {
-    return { positions: {}, pendingSwaps: {}, lastUpdated: null };
+    return emptyState();
   }
   try {
-    const state = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-    if (!state.pendingSwaps) state.pendingSwaps = {}; // back-compat with state.json written before this field existed
-    return state;
+    return normalize(JSON.parse(fs.readFileSync(STATE_FILE, "utf8")));
   } catch (err) {
-    log("state_error", `Failed to read state.json: ${err.message}`);
-    return { positions: {}, pendingSwaps: {}, lastUpdated: null };
+    log("state_error", `Failed to read state.json: ${err.message} — attempting recovery from backup`);
+    if (fs.existsSync(STATE_BACKUP_FILE)) {
+      try {
+        const backup = normalize(JSON.parse(fs.readFileSync(STATE_BACKUP_FILE, "utf8")));
+        recoveredFromBackupPending = true;
+        log("state_error", `Recovered state from ${STATE_BACKUP_FILE} (may be a few seconds behind the corrupted file)`);
+        return backup;
+      } catch (backupErr) {
+        log("state_error", `Backup also unreadable: ${backupErr.message} — starting from empty state`);
+      }
+    } else {
+      log("state_error", "No backup available — starting from empty state");
+    }
+    return emptyState();
   }
 }
 
 function save(state) {
   try {
+    // Back up the current on-disk file BEFORE overwriting it, so a write
+    // that gets interrupted mid-way (crash, disk full, container killed)
+    // can't take out both the live file and its only recovery copy at
+    // once. Skipped if the current file is itself unreadable — no point
+    // propagating a corrupt file into the backup slot.
+    if (fs.existsSync(STATE_FILE)) {
+      try {
+        JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+        fs.copyFileSync(STATE_FILE, STATE_BACKUP_FILE);
+      } catch {
+        // current file already corrupt — leave whatever backup exists alone
+      }
+    }
     state.lastUpdated = new Date().toISOString();
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   } catch (err) {
