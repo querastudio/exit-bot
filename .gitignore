@@ -6,4 +6,5 @@ state.json.bak-*
 logs/
 .claude/settings.local.json
 *.swp
-test/.test-state.json
+test/.test-state*.json
+test/.test-state*.json.bak

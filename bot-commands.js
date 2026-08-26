@@ -10,7 +10,7 @@ import { wallet, connection } from "./client.js";
 import { config, updateManagementSetting } from "./config.js";
 import { log } from "./logger.js";
 import { fetchOpenPositions } from "./positions.js";
-import { getTrackedPosition } from "./state.js";
+import { getTrackedPosition, getTrackedPositions } from "./state.js";
 import { performClose } from "./actions.js";
 import { startedAt, getLastTickAt } from "./status.js";
 import {
@@ -27,6 +27,7 @@ import {
 
 const BOT_COMMANDS = [
   { command: "positions", description: "Lihat & kelola posisi aktif" },
+  { command: "pnl", description: "Statistik win rate & performance" },
   { command: "settings", description: "Setting TP/SL/trailing/dll" },
   { command: "status", description: "Status bot (uptime, RPC, saldo)" },
   { command: "pause", description: "Pause auto-exit" },
@@ -83,6 +84,48 @@ function fmtDuration(ms) {
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   return `${h}h${m % 60}m`;
+}
+
+/**
+ * Summarize realized performance from state.json's closed positions —
+ * win rate, average win/loss size, total PnL, and a breakdown of which
+ * exit rule fired each time. Pure read of existing tracked data, no new
+ * state or side effects.
+ */
+export function buildPnlStatsText() {
+  const closed = getTrackedPositions(false).filter((p) => p.closed);
+  if (closed.length === 0) {
+    return "📊 <b>Performance Stats</b>\nBelum ada posisi yang closed.";
+  }
+
+  const withPnl = closed.filter((p) => p.close_pnl_pct != null);
+  const wins = withPnl.filter((p) => p.close_pnl_pct > 0);
+  const losses = withPnl.filter((p) => p.close_pnl_pct <= 0);
+  const winRate = withPnl.length > 0 ? (wins.length / withPnl.length) * 100 : 0;
+  const avgWin = wins.length > 0 ? wins.reduce((sum, p) => sum + p.close_pnl_pct, 0) / wins.length : null;
+  const avgLoss = losses.length > 0 ? losses.reduce((sum, p) => sum + p.close_pnl_pct, 0) / losses.length : null;
+  const totalPnl = withPnl.reduce((sum, p) => sum + p.close_pnl_pct, 0);
+
+  const byAction = {};
+  for (const p of closed) {
+    const key = p.close_action || "UNKNOWN";
+    byAction[key] = (byAction[key] ?? 0) + 1;
+  }
+  const actionLines = Object.entries(byAction)
+    .sort((a, b) => b[1] - a[1])
+    .map(([action, count]) => `${escapeHtml(action)}: ${count}x`)
+    .join("\n");
+
+  return (
+    `📊 <b>Performance Stats</b>\n` +
+    `Total posisi closed: ${closed.length}\n` +
+    `Win rate: ${winRate.toFixed(1)}% (${wins.length}W / ${losses.length}L)\n` +
+    `Rata-rata profit (menang): ${avgWin != null ? `+${avgWin.toFixed(2)}%` : "-"}\n` +
+    `Rata-rata loss (kalah): ${avgLoss != null ? `${avgLoss.toFixed(2)}%` : "-"}\n` +
+    `Total PnL (jumlah persentase, bukan compounded): ${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}%\n\n` +
+    `<b>Breakdown alasan close:</b>\n${actionLines}\n\n` +
+    `<i>Catatan: ini jumlah persentase per-trade, bukan return compounded — size posisi tiap trade bisa beda-beda jadi angka ini indikasi konsistensi strategi, bukan total profit uang riil.</i>`
+  );
 }
 
 async function buildStatusText() {
@@ -296,6 +339,11 @@ async function handleMessage(msg) {
 
   if (text === "/settings") {
     await showSettings();
+    return;
+  }
+
+  if (text === "/pnl") {
+    await sendTelegram(buildPnlStatsText());
     return;
   }
 
