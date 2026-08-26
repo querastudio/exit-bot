@@ -71,7 +71,18 @@ async function swapToSolOnce(wallet, inputMint, amountRaw) {
     throw new Error(result.error || result.status || "execute failed");
   }
 
-  return result.signature;
+  return {
+    signature: result.signature,
+    // Jupiter's quoted output and its slippage-adjusted guaranteed minimum
+    // (both in lamports of SOL, since outputMint is always SOL here) —
+    // surfaced so a swap that lands far below what was quoted is visible
+    // in the notification, not just a bare "success". Optional chaining
+    // since exact field names aren't something this code should assume
+    // will never change on Jupiter's side — absence just means no figures
+    // shown, never a crash.
+    outAmount: order?.outAmount ?? null,
+    minOutAmount: order?.otherAmountThreshold ?? null,
+  };
 }
 
 /**
@@ -89,9 +100,9 @@ export async function swapToSol(wallet, inputMint, amountRaw) {
   let lastError;
   for (let attempt = 1; attempt <= SWAP_MAX_ATTEMPTS; attempt++) {
     try {
-      const signature = await swapToSolOnce(wallet, inputMint, amountRaw);
+      const { signature, outAmount, minOutAmount } = await swapToSolOnce(wallet, inputMint, amountRaw);
       log("swap", `Swapped ${inputMint.slice(0, 8)} → SOL, tx: ${signature}${attempt > 1 ? ` (attempt ${attempt})` : ""}`);
-      return { success: true, signature };
+      return { success: true, signature, outAmount, minOutAmount };
     } catch (err) {
       lastError = err;
       log("swap_error", `Swap ${inputMint.slice(0, 8)} → SOL failed (attempt ${attempt}/${SWAP_MAX_ATTEMPTS}): ${err.message}`);

@@ -18,6 +18,14 @@ function formatPnl(pct) {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 }
 
+/** Lamports (string/number from Jupiter's quote) -> "◎0.1234" for display, or null if absent. */
+export function formatSolLamports(lamports) {
+  if (lamports == null) return null;
+  const n = Number(lamports);
+  if (!Number.isFinite(n)) return null;
+  return `◎${(n / 1e9).toFixed(4)}`;
+}
+
 /**
  * Close a position, auto-swap leftover base token to SOL, record state,
  * and notify Telegram. Returns:
@@ -67,7 +75,11 @@ export async function performClose(position, action, reason, { source = "auto" }
           const swapResult = await swapToSol(wallet, result.base_mint, raw);
           if (swapResult.success && !swapResult.skipped) {
             clearFailedSwap(result.base_mint);
-            await sendTelegram(`Swap: ${escapeHtml(result.base_mint.slice(0, 8))}… → SOL ✅ (${escapeHtml(position.pair)})`);
+            const minOut = formatSolLamports(swapResult.minOutAmount);
+            const minOutLine = minOut ? ` (min dijamin: ${minOut})` : "";
+            await sendTelegram(
+              `Swap: ${escapeHtml(result.base_mint.slice(0, 8))}… → SOL ✅${minOutLine} (${escapeHtml(position.pair)})`,
+            );
           } else if (!swapResult.success) {
             recordFailedSwap(result.base_mint);
             await sendTelegram(
