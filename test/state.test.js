@@ -20,6 +20,7 @@ const {
   confirmPeak,
   registerExitSignal,
   detectTopup,
+  detectPnlSpike,
   isTopupSettling,
   updatePnlAndCheckExits,
   getTrackedPosition,
@@ -136,6 +137,59 @@ test("isTopupSettling keeps suppressing while still within the settle window", (
   detectTopup("posI", { deposit_total: 2 }); // arms settling
   const mgmt = { topupMaxSettleSec: 300, topupSettleMinSec: 999999, topupSettleTolerancePct: 3, topupSettleConfirmTicks: 3 };
   assert.equal(isTopupSettling("posI", 999, mgmt), true);
+});
+
+// ── detectPnlSpike (both directions) ──
+
+test("detectPnlSpike catches a large POSITIVE one-tick jump (phantom top-up profit)", () => {
+  ensurePositionTracked("posSpikeUp", {});
+  const mgmt = {};
+  detectPnlSpike("posSpikeUp", 1, mgmt); // baseline reading, no previous value yet -> no trigger
+  const armed = detectPnlSpike("posSpikeUp", 40, mgmt); // +39pp jump, default threshold 15
+  assert.equal(armed, true);
+  assert.equal(getTrackedPosition("posSpikeUp").spike_direction, "up");
+});
+
+test("detectPnlSpike catches a large NEGATIVE one-tick jump (phantom crash reading) — the LOOKSMAX/SOL incident", () => {
+  ensurePositionTracked("posSpikeDown", {});
+  const mgmt = {};
+  detectPnlSpike("posSpikeDown", 0.02, mgmt); // healthy reading, matches baseline
+  const armed = detectPnlSpike("posSpikeDown", -100, mgmt); // implausible one-tick crash to -100%
+  assert.equal(armed, true);
+  assert.equal(getTrackedPosition("posSpikeDown").spike_direction, "down");
+});
+
+test("detectPnlSpike ignores jumps under the threshold in either direction", () => {
+  ensurePositionTracked("posNoSpike", {});
+  const mgmt = { pnlSpikeGuardPct: 15 };
+  detectPnlSpike("posNoSpike", 1, mgmt);
+  assert.equal(detectPnlSpike("posNoSpike", -5, mgmt), false); // -6pp jump, under threshold
+});
+
+test("a phantom crash reading (down-spike) suppresses exit checks until PnL recovers back up toward baseline", () => {
+  ensurePositionTracked("posCrashRecover", { in_range: true });
+  const mgmt = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -6, trailingTakeProfit: false,
+    dualSideEnabled: false, outOfRangeExitEnabled: false, confirmTicks: 3,
+    topupMaxSettleSec: 300, topupSettleMinSec: 0, topupSettleTolerancePct: 3, topupSettleConfirmTicks: 1,
+  };
+
+  confirmPeak("posCrashRecover", 2, 1); // establish a real peak/baseline of 2%
+  detectPnlSpike("posCrashRecover", 2, mgmt); // baseline reading
+  const armed = detectPnlSpike("posCrashRecover", -100, mgmt); // implausible crash
+  assert.equal(armed, true);
+
+  // Even though -100% is far below stopLossPct (-6%), the settling guard
+  // must suppress the exit check entirely — this is the exact bug that let
+  // a false STOP_LOSS fire on a real deployment (LOOKSMAX/SOL) despite the
+  // token's price never actually crashing.
+  assert.equal(isTopupSettling("posCrashRecover", -100, mgmt), true);
+  const exitDuringGlitch = updatePnlAndCheckExits("posCrashRecover", { ...baseTick, pnl_pct: -100 }, mgmt);
+  assert.equal(exitDuringGlitch, null);
+
+  // Once the reading recovers back up near baseline, settling clears and
+  // normal checks resume.
+  assert.equal(isTopupSettling("posCrashRecover", 1.5, mgmt), false);
 });
 
 // ── updatePnlAndCheckExits ──

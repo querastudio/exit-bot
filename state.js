@@ -127,6 +127,7 @@ export function ensurePositionTracked(position_address, positionData) {
     pre_topup_pnl_pct: null,
     topup_settling_started_at: null,
     topup_settle_confirm_count: 0,
+    spike_direction: null,
   };
   save(state);
   log("state", `Tracked new position ${position_address.slice(0, 8)} in pool ${state.positions[position_address].pool_name}`);
@@ -228,18 +229,25 @@ export function inGracePeriod(position_address, graceSec = 20) {
  * same underlying artifact and should suppress checks identically. Caller
  * still owns save()/logging.
  */
-function armTopupSettling(pos) {
+function armTopupSettling(pos, direction = "up") {
   pos.deployed_at = new Date().toISOString();
   // The fixed-length grace window above isn't always enough — the indexer's
   // balances/deposits reconciliation lag is variable and can run well past
   // it (observed 2.5min+ after back-to-back top-ups). So on top of the
   // timed grace, hold a baseline (the last confirmed-real peak) and keep
   // suppressing exit/peak checks in isTopupSettling() until the reported
-  // PnL actually comes back down near that baseline, however long that takes.
+  // PnL actually comes back near that baseline, however long that takes.
   pos.topup_settling = true;
   pos.pre_topup_pnl_pct = pos.peak_pnl_pct ?? 0;
   pos.topup_settling_started_at = new Date().toISOString();
   pos.topup_settle_confirm_count = 0;
+  // "up" = phantom PROFIT spike (top-up, or a positive one-tick jump) —
+  // settled once PnL decays back down near baseline. "down" = phantom LOSS
+  // spike (a data glitch reporting an implausible crash that never
+  // happened) — settled once PnL recovers back up near baseline. Same
+  // suppression window, opposite recovery direction, so isTopupSettling
+  // needs to know which way it's waiting.
+  pos.spike_direction = direction;
 }
 
 /**
@@ -305,6 +313,16 @@ export function detectTopup(position_address, positionData) {
  * genuine price spike both produce large jumps, but gating exits behind the
  * same settling window either way is the safe tradeoff — a real spike just
  * waits out the settling window before firing for real.
+ *
+ * Checks BOTH directions. The original version only caught large POSITIVE
+ * jumps (phantom profit from a top-up) — a large NEGATIVE jump (indexer
+ * briefly reporting balances as ~0, or any other data glitch) had no
+ * equivalent guard, so a bad single reading of e.g. -100% could sail
+ * straight through confirmTicks and fire a real STOP_LOSS on a position
+ * that never actually lost anything (confirmed by checking the token's
+ * real price chart — no crash happened). Both directions now arm the same
+ * settling suppression, just recovering toward baseline from the opposite
+ * side (see isTopupSettling).
  */
 export function detectPnlSpike(position_address, currentPnlPct, mgmtConfig) {
   const state = load();
@@ -322,12 +340,14 @@ export function detectPnlSpike(position_address, currentPnlPct, mgmtConfig) {
   const jump = currentPnlPct - prevPnlPct;
   const threshold = mgmtConfig.pnlSpikeGuardPct ?? 15;
 
-  if (!pos.topup_settling && jump >= threshold) {
-    armTopupSettling(pos);
+  if (!pos.topup_settling && Math.abs(jump) >= threshold) {
+    const direction = jump > 0 ? "up" : "down";
+    armTopupSettling(pos, direction);
     save(state);
     log(
       "state",
-      `Position ${position_address.slice(0, 8)} PnL jumped +${jump.toFixed(2)}pp in one tick (${prevPnlPct.toFixed(2)}% -> ${currentPnlPct.toFixed(2)}%) — treating as phantom top-up spike, re-arming settling guard`,
+      `Position ${position_address.slice(0, 8)} PnL jumped ${jump > 0 ? "+" : ""}${jump.toFixed(2)}pp in one tick ` +
+      `(${prevPnlPct.toFixed(2)}% -> ${currentPnlPct.toFixed(2)}%) — treating as phantom ${direction === "up" ? "top-up" : "crash"} spike, re-arming settling guard`,
     );
     return true;
   }
@@ -380,7 +400,11 @@ export function isTopupSettling(position_address, currentPnlPct, mgmtConfig) {
 
   const baseline = pos.pre_topup_pnl_pct ?? 0;
   const tolerancePct = mgmtConfig.topupSettleTolerancePct ?? 3;
-  const withinTolerance = currentPnlPct - baseline <= tolerancePct;
+  // "up" spikes settle by decaying back DOWN toward baseline; "down" spikes
+  // (phantom crash reading) settle by recovering back UP toward baseline —
+  // see armTopupSettling/detectPnlSpike.
+  const withinTolerance =
+    pos.spike_direction === "down" ? currentPnlPct - baseline >= -tolerancePct : currentPnlPct - baseline <= tolerancePct;
 
   if (withinTolerance && elapsedSec >= minSettleSec) {
     pos.topup_settle_confirm_count = (pos.topup_settle_confirm_count ?? 0) + 1;
