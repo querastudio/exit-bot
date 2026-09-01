@@ -2,6 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
 import { log } from "./logger.js";
 import { sendTransactionWithOptionalJito } from "./jito.js";
+import { fallbackConnection, isRetryableRpcError } from "./client.js";
 
 let _DLMM = null;
 async function getDlmmSdk() {
@@ -24,7 +25,23 @@ export async function closePositionOnChain(connection, wallet, positionAddress, 
   try {
     pool = await DLMM.create(connection, new PublicKey(poolAddress));
   } catch (e) {
-    return { success: false, error: `Could not load pool: ${e.message}`, txs: [] };
+    // DLMM.create does its own internal RPC calls inside the SDK, which our
+    // per-method Proxy fallback in client.js never sees invoked on
+    // `connection` — so a primary-RPC rate limit here never triggers the
+    // Proxy's fallback retry. Retry the whole call against the raw fallback
+    // connection explicitly, and if it works, use that connection for the
+    // rest of this close attempt too.
+    if (!isRetryableRpcError(e) || !fallbackConnection) {
+      return { success: false, error: `Could not load pool: ${e.message}`, txs: [] };
+    }
+    log("close_warn", `DLMM.create failed on primary RPC (${e.message}) — retrying via fallback RPC`);
+    try {
+      pool = await DLMM.create(fallbackConnection, new PublicKey(poolAddress));
+      connection = fallbackConnection;
+      log("close", `DLMM.create succeeded via fallback RPC for pool ${poolAddress.slice(0, 8)}`);
+    } catch (e2) {
+      return { success: false, error: `Could not load pool: ${e2.message}`, txs: [] };
+    }
   }
   const positionPubKey = new PublicKey(positionAddress);
   const baseMint = pool.lbPair.tokenXMint.toString();

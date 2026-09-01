@@ -4,7 +4,7 @@
  */
 import { PublicKey } from "@solana/web3.js";
 import BN from "bn.js";
-import { connection } from "./client.js";
+import { connection, fallbackConnection, isRetryableRpcError } from "./client.js";
 import { log } from "./logger.js";
 
 const PORTFOLIO_API = "https://dlmm.datapi.meteora.ag/portfolio/open";
@@ -143,8 +143,20 @@ export async function fetchOpenPositions(walletAddress, { solMode = false, check
         const DLMM = await getDlmmSdk();
         dlmmPool = await DLMM.create(connection, new PublicKey(pool.poolAddress));
       } catch (e) {
-        dlmmPoolFailed = true;
-        log("positions_warn", `DLMM.create failed for pool ${pool.poolAddress.slice(0, 8)}: ${e.message}`);
+        // See close.js for why DLMM.create needs an explicit fallback retry
+        // rather than relying on the connection Proxy's per-method fallback.
+        if (isRetryableRpcError(e) && fallbackConnection) {
+          try {
+            const DLMM = await getDlmmSdk();
+            dlmmPool = await DLMM.create(fallbackConnection, new PublicKey(pool.poolAddress));
+          } catch (e2) {
+            dlmmPoolFailed = true;
+            log("positions_warn", `DLMM.create failed for pool ${pool.poolAddress.slice(0, 8)} on primary and fallback RPC: ${e2.message}`);
+          }
+        } else {
+          dlmmPoolFailed = true;
+          log("positions_warn", `DLMM.create failed for pool ${pool.poolAddress.slice(0, 8)}: ${e.message}`);
+        }
       }
       return dlmmPool;
     }

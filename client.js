@@ -26,7 +26,7 @@ if (fallbackConnection) {
 }
 
 /** Network/server-level failure — worth retrying against a different RPC. */
-function isRetryableRpcError(err) {
+export function isRetryableRpcError(err) {
   const msg = String(err?.message || err || "");
   return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|network|timeout|429|failed to fetch|5\d\d/i.test(msg);
 }
@@ -61,3 +61,11 @@ function withRpcFallback(target, fallback) {
 }
 
 export const connection = withRpcFallback(primaryConnection, fallbackConnection);
+
+// Raw (non-proxied) fallback connection, exported for call sites that need
+// to retry a whole SDK call (e.g. DLMM.create) against the fallback RPC
+// directly — the @meteora-ag/dlmm/@coral-xyz/anchor SDK does its own
+// internal RPC plumbing from the connection it's given, so wrapping the
+// connection object in a per-method Proxy doesn't catch failures that
+// happen inside SDK-internal calls the Proxy never sees invoked on `connection`.
+export { fallbackConnection };
