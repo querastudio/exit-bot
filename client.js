@@ -31,6 +31,18 @@ export function isRetryableRpcError(err) {
   return /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|network|timeout|429|failed to fetch|5\d\d/i.test(msg);
 }
 
+// Circuit breaker: once the primary RPC fails CIRCUIT_BREAKER_THRESHOLD times
+// in a row (e.g. its usage quota is exhausted, not just a transient blip),
+// skip trying it entirely for CIRCUIT_BREAKER_COOLDOWN_MS and route straight
+// to the fallback. Each call against a dead primary still burns ~7.5s in
+// @solana/web3.js's own internal 429 retry-with-backoff (500/1000/2000/4000ms)
+// before our catch block even runs, so once we know it's down there's no
+// point paying that tax on every single call until it's had time to recover.
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_COOLDOWN_MS = 30_000;
+let consecutivePrimaryFailures = 0;
+let primaryDownUntil = 0;
+
 /**
  * Wrap a Connection so every method call falls back to `fallback` on a
  * network-level failure. Transparent to callers — they keep using
@@ -39,19 +51,33 @@ export function isRetryableRpcError(err) {
  * .apply) so the real Connection instance's internal state/private fields
  * stay intact — the proxy never becomes `this` inside Connection's own code.
  */
-function withRpcFallback(target, fallback) {
+export function withRpcFallback(target, fallback) {
   if (!fallback) return target;
   return new Proxy(target, {
     get(obj, prop, receiver) {
       const value = Reflect.get(obj, prop, receiver);
       if (typeof value !== "function") return value;
       return async function (...args) {
+        const fallbackFn = fallback[prop];
+        if (Date.now() < primaryDownUntil && typeof fallbackFn === "function") {
+          return await fallbackFn.apply(fallback, args);
+        }
         try {
-          return await value.apply(obj, args);
+          const result = await value.apply(obj, args);
+          consecutivePrimaryFailures = 0;
+          return result;
         } catch (err) {
           if (!isRetryableRpcError(err)) throw err;
-          log("rpc_warn", `Primary RPC call ${String(prop)}() failed (${err.message}) — retrying via fallback RPC`);
-          const fallbackFn = fallback[prop];
+          consecutivePrimaryFailures++;
+          if (consecutivePrimaryFailures >= CIRCUIT_BREAKER_THRESHOLD && Date.now() >= primaryDownUntil) {
+            primaryDownUntil = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
+            log(
+              "rpc_warn",
+              `Primary RPC failed ${consecutivePrimaryFailures}x in a row (${err.message}) — routing straight to fallback RPC for the next ${CIRCUIT_BREAKER_COOLDOWN_MS / 1000}s`,
+            );
+          } else {
+            log("rpc_warn", `Primary RPC call ${String(prop)}() failed (${err.message}) — retrying via fallback RPC`);
+          }
           if (typeof fallbackFn !== "function") throw err;
           return await fallbackFn.apply(fallback, args);
         }
