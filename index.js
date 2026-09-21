@@ -22,6 +22,7 @@ import {
   registerExitSignal,
   updatePnlAndCheckExits,
   detectTopup,
+  detectFeeClaim,
   detectPnlSpike,
   inGracePeriod,
   isTopupSettling,
@@ -98,6 +99,7 @@ async function tick() {
     for (const p of positions) {
       ensurePositionTracked(p.position, p);
       detectTopup(p.position, p);
+      detectFeeClaim(p.position, p);
       detectPnlSpike(p.position, p.pnl_pct, config.management);
 
       const settling = isTopupSettling(p.position, p.pnl_pct, config.management);

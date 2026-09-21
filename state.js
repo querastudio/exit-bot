@@ -128,6 +128,7 @@ export function ensurePositionTracked(position_address, positionData) {
     topup_settling_started_at: null,
     topup_settle_confirm_count: 0,
     spike_direction: null,
+    last_unclaimed_fees_usd: positionData.unclaimed_fees_usd ?? null,
   };
   save(state);
   log("state", `Tracked new position ${position_address.slice(0, 8)} in pool ${state.positions[position_address].pool_name}`);
@@ -289,6 +290,49 @@ export function detectTopup(position_address, positionData) {
     log(
       "state",
       `Position ${position_address.slice(0, 8)} deposit jumped +${pct}% (size top-up) — re-arming grace period to avoid reading it as PnL`,
+    );
+    return true;
+  }
+
+  save(state);
+  return false;
+}
+
+/**
+ * Claiming fees (whether the bot does it as part of a close, or the user
+ * does it manually from the Meteora UI) zeroes out unclaimed fees, and the
+ * indexer's balances/PnL reconciliation for that can lag the same way a
+ * top-up's does (see detectTopup) — observed causing PnL to briefly read
+ * higher than it actually is right after a manual claim, which can get
+ * confirmed as a fake trailing-TP peak and trigger a premature close. A
+ * near-total drop in unclaimed fees is a reliable "a claim just happened"
+ * signal, so treat it the same way as a top-up: re-arm the settling guard.
+ */
+export function detectFeeClaim(position_address, positionData) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return false;
+
+  const currentUnclaimed = positionData.unclaimed_fees_usd;
+  if (currentUnclaimed == null) return false;
+
+  const prevUnclaimed = pos.last_unclaimed_fees_usd;
+  pos.last_unclaimed_fees_usd = currentUnclaimed;
+
+  if (prevUnclaimed == null || prevUnclaimed <= 0) {
+    save(state);
+    return false;
+  }
+
+  const dropped = prevUnclaimed - currentUnclaimed;
+  const isClaim = dropped > 0.0005 && currentUnclaimed <= prevUnclaimed * 0.1;
+
+  if (isClaim) {
+    armTopupSettling(pos, "up");
+    save(state);
+    log(
+      "state",
+      `Position ${position_address.slice(0, 8)} unclaimed fees dropped from ${prevUnclaimed.toFixed(4)} to ${currentUnclaimed.toFixed(4)} (fee claim detected) — re-arming settling guard to avoid reading it as PnL`,
     );
     return true;
   }

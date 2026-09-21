@@ -20,6 +20,7 @@ const {
   confirmPeak,
   registerExitSignal,
   detectTopup,
+  detectFeeClaim,
   detectPnlSpike,
   isTopupSettling,
   updatePnlAndCheckExits,
@@ -119,6 +120,46 @@ test("detectTopup ignores fluctuations under the threshold", () => {
   ensurePositionTracked("posG", { deposit_total: 1 });
   detectTopup("posG", { deposit_total: 1 });
   assert.equal(detectTopup("posG", { deposit_total: 1.001 }), false);
+});
+
+// ── detectFeeClaim ──
+
+test("detectFeeClaim flags a near-total drop in unclaimed fees as a claim and arms settling", () => {
+  ensurePositionTracked("posFC", { unclaimed_fees_usd: 0.01 });
+  assert.equal(detectFeeClaim("posFC", { unclaimed_fees_usd: 0.012 }), false);
+  assert.equal(detectFeeClaim("posFC", { unclaimed_fees_usd: 0.0001 }), true);
+  assert.equal(getTrackedPosition("posFC").topup_settling, true);
+  assert.equal(getTrackedPosition("posFC").spike_direction, "up");
+});
+
+test("detectFeeClaim ignores small unclaimed-fee fluctuations (normal fee accrual/decay)", () => {
+  ensurePositionTracked("posFD", { unclaimed_fees_usd: 0.01 });
+  detectFeeClaim("posFD", { unclaimed_fees_usd: 0.01 });
+  assert.equal(detectFeeClaim("posFD", { unclaimed_fees_usd: 0.009 }), false);
+});
+
+test("a fee-claim-triggered settling guard suppresses a would-be premature TRAILING_TP", () => {
+  ensurePositionTracked("posFE", { unclaimed_fees_usd: 0.01 });
+  const mgmt = {
+    trailingTakeProfit: true,
+    trailingTriggerPct: 3,
+    trailingDropPct: 1,
+    exitGracePeriodSec: 0, // isolate the settling guard from the separate open-grace-period check
+    topupMaxSettleSec: 300,
+    topupSettleMinSec: 999999,
+    topupSettleTolerancePct: 3,
+    topupSettleConfirmTicks: 3,
+  };
+  // Position confirms a real peak of 3.5% first (not itself the artifact).
+  confirmPeak("posFE", 3.5, 1);
+  updatePnlAndCheckExits("posFE", { ...baseTick, pnl_pct: 3.5 }, mgmt);
+
+  // User claims fees manually — indexer briefly misreports PnL, but that's
+  // caught by detectFeeClaim before it can be read as a real drop.
+  detectFeeClaim("posFE", { unclaimed_fees_usd: 0.0001 });
+  assert.equal(isTopupSettling("posFE", 1, mgmt), true);
+  const exit = updatePnlAndCheckExits("posFE", { ...baseTick, pnl_pct: 1 }, mgmt);
+  assert.equal(exit, null);
 });
 
 // ── isTopupSettling ──
