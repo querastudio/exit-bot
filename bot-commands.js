@@ -10,7 +10,7 @@ import { wallet, connection } from "./client.js";
 import { config, updateManagementSetting } from "./config.js";
 import { log } from "./logger.js";
 import { fetchOpenPositions } from "./positions.js";
-import { getTrackedPosition, getTrackedPositions } from "./state.js";
+import { getTrackedPosition, getTrackedPositions, getRangeConsumedPct } from "./state.js";
 import { performClose } from "./actions.js";
 import { startedAt, getLastTickAt } from "./status.js";
 import {
@@ -166,6 +166,15 @@ function trailingTrendEmoji(currentPct, peakPct) {
   return currentPct >= peakPct ? "📈" : "📉";
 }
 
+function rangeConsumedLine(p) {
+  const pct = getRangeConsumedPct(p.position, p);
+  if (pct == null) return "";
+  const critical = config.management.rangeCriticalWarningPct ?? 50;
+  const early = config.management.rangeEarlyWarningPct ?? 20;
+  const emoji = pct >= critical ? "🔴" : pct >= early ? "🟡" : "🟢";
+  return `Bin consumed: ${pct.toFixed(0)}% ${emoji}\n`;
+}
+
 function formatPositionBlock(p, idx) {
   const emoji = pnlEmoji(p.pnl_pct);
   const statusEmoji = p.in_range ? "🟢" : "🔴";
@@ -182,6 +191,7 @@ function formatPositionBlock(p, idx) {
     `<b>Posisi ${idx}</b>\n` +
     `<b>${escapeHtml(p.pair)}</b> | Age: ${fmtAge(p.age_minutes)} | Val: ${fmtValue(p.total_value_usd)} | Unclaimed: ${fmtValue(p.unclaimed_fees_usd)}\n` +
     `PnL: ${fmtPnl(p.pnl_pct)} ${emoji} | Fee/TVL24h: ${p.fee_per_tvl_24h ?? "?"}% | ${statusEmoji} ${statusLabel}\n` +
+    rangeConsumedLine(p) +
     dualSideLine +
     trailingLine +
     dualSideTrailingLine

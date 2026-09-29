@@ -24,6 +24,7 @@ const {
   detectPnlSpike,
   isTopupSettling,
   checkRangeConsumedAlerts,
+  getRangeConsumedPct,
   updatePnlAndCheckExits,
   getTrackedPosition,
   recordFailedSwap,
@@ -226,6 +227,22 @@ test("checkRangeConsumedAlerts measures from the upper edge when price entered f
 test("checkRangeConsumedAlerts returns null for a position with no bin data tracked", () => {
   ensurePositionTracked("posRE", {});
   assert.equal(checkRangeConsumedAlerts("posRE", { lower_bin: 0, upper_bin: 100, active_bin: 90 }, mgmtRangeAlerts), null);
+});
+
+// ── getRangeConsumedPct ──
+
+test("getRangeConsumedPct reports the same figure as the alert check, without mutating alert state", () => {
+  ensurePositionTracked("posRF", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  assert.equal(getRangeConsumedPct("posRF", { lower_bin: 0, upper_bin: 100, active_bin: 33 }), 33);
+  // A read shouldn't consume the alert's one-shot-per-crossing state.
+  const fired = checkRangeConsumedAlerts("posRF", { lower_bin: 0, upper_bin: 100, active_bin: 33 }, mgmtRangeAlerts);
+  assert.equal(fired.level, "EARLY");
+});
+
+test("getRangeConsumedPct returns null for an untracked or bin-less position", () => {
+  assert.equal(getRangeConsumedPct("does-not-exist", { lower_bin: 0, upper_bin: 100, active_bin: 10 }), null);
+  ensurePositionTracked("posRG", {});
+  assert.equal(getRangeConsumedPct("posRG", { lower_bin: 0, upper_bin: 100, active_bin: 10 }), null);
 });
 
 // ── isTopupSettling ──

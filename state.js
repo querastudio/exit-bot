@@ -514,6 +514,24 @@ function computeRangeConsumedPct(entryEdge, lowerBin, upperBin, activeBin, total
 }
 
 /**
+ * Read-only lookup of the same %-consumed figure checkRangeConsumedAlerts()
+ * uses, for display purposes (e.g. /positions) — doesn't touch the
+ * alert-sent flags or write to disk. Returns null if the position wasn't
+ * tracked with bin data at open (see ensurePositionTracked), or if any of
+ * the current bin fields are missing.
+ */
+export function getRangeConsumedPct(position_address, positionData) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.range_entry_edge == null || !pos.range_total_bins) return null;
+
+  const { lower_bin: lowerBin, upper_bin: upperBin, active_bin: activeBin } = positionData;
+  if (lowerBin == null || upperBin == null || activeBin == null) return null;
+
+  return computeRangeConsumedPct(pos.range_entry_edge, lowerBin, upperBin, activeBin, pos.range_total_bins);
+}
+
+/**
  * Informational (non-exit) alerts for how far price has moved through a
  * position's range — an early heads-up that a single-sided deposit is
  * being converted into the other token, well before it's fully out of
