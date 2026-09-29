@@ -26,6 +26,7 @@ import {
   detectPnlSpike,
   inGracePeriod,
   isTopupSettling,
+  checkRangeConsumedAlerts,
   consumeRecoveryAlert,
 } from "./state.js";
 import { telegramEnabled, sendTelegram, escapeHtml } from "./telegram.js";
@@ -105,6 +106,19 @@ async function tick() {
       const settling = isTopupSettling(p.position, p.pnl_pct, config.management);
       if (!inGracePeriod(p.position, config.management.exitGracePeriodSec) && !settling) {
         confirmPeak(p.position, p.pnl_pct, config.management.confirmTicks);
+      }
+
+      const rangeAlert = checkRangeConsumedAlerts(p.position, p, config.management);
+      if (rangeAlert) {
+        const emoji = rangeAlert.level === "CRITICAL" ? "🟠" : "🟡";
+        const label = rangeAlert.level === "CRITICAL" ? "Critical Warning" : "Early Warning";
+        const pnlText = p.pnl_pct != null ? `${p.pnl_pct >= 0 ? "+" : ""}${p.pnl_pct.toFixed(2)}%` : "?";
+        const yieldText = p.fee_per_tvl_24h != null ? `${p.fee_per_tvl_24h.toFixed(2)}%` : "?";
+        sendTelegram(
+          `${emoji} <b>${label}</b> — ${escapeHtml(p.pair)}\n` +
+          `${rangeAlert.consumedPct.toFixed(0)}% dari range sudah terkonversi\n` +
+          `PnL: ${pnlText} | Yield (fee/TVL24h): ${yieldText}`,
+        ).catch(() => {});
       }
 
       const exit = updatePnlAndCheckExits(p.position, p, config.management);

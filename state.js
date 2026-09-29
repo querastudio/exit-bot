@@ -86,6 +86,27 @@ export function ensurePositionTracked(position_address, positionData) {
   const state = load();
   if (state.positions[position_address] && !state.positions[position_address].closed) return;
 
+  // Range-consumed tracking (see checkRangeConsumedAlerts below): frozen at
+  // open, same spirit as is_dual_side_at_open — which edge of the range the
+  // active bin started closest to is the "0% consumed" reference point, and
+  // that shouldn't drift as price moves around later.
+  const lowerBin = positionData.lower_bin ?? null;
+  const upperBin = positionData.upper_bin ?? null;
+  const activeBin = positionData.active_bin ?? null;
+  let rangeEntryEdge = null;
+  let rangeTotalBins = null;
+  if (lowerBin != null && upperBin != null && activeBin != null && upperBin > lowerBin) {
+    rangeTotalBins = upperBin - lowerBin;
+    rangeEntryEdge =
+      activeBin <= lowerBin
+        ? "lower"
+        : activeBin >= upperBin
+          ? "upper"
+          : activeBin - lowerBin <= upperBin - activeBin
+            ? "lower"
+            : "upper";
+  }
+
   state.positions[position_address] = {
     position: position_address,
     pool: positionData.pool || null,
@@ -129,6 +150,10 @@ export function ensurePositionTracked(position_address, positionData) {
     topup_settle_confirm_count: 0,
     spike_direction: null,
     last_unclaimed_fees_usd: positionData.unclaimed_fees_usd ?? null,
+    range_entry_edge: rangeEntryEdge,
+    range_total_bins: rangeTotalBins,
+    range_early_warning_sent: false,
+    range_critical_warning_sent: false,
   };
   save(state);
   log("state", `Tracked new position ${position_address.slice(0, 8)} in pool ${state.positions[position_address].pool_name}`);
@@ -472,6 +497,77 @@ export function isTopupSettling(position_address, currentPnlPct, mgmtConfig) {
   }
 
   return true;
+}
+
+/**
+ * % of the way the active bin has traveled from the position's entry edge
+ * (the edge nearest the active bin when the position was first opened —
+ * see ensurePositionTracked) toward the opposite edge. For a single-sided
+ * deposit this tracks how much of it has effectively been converted into
+ * the other token as price moves through the range. Clamped to [0, 100] —
+ * a position that's fully out the far side reads as 100%, not >100%.
+ */
+function computeRangeConsumedPct(entryEdge, lowerBin, upperBin, activeBin, totalBins) {
+  if (!totalBins || totalBins <= 0) return null;
+  const raw = entryEdge === "lower" ? ((activeBin - lowerBin) / totalBins) * 100 : ((upperBin - activeBin) / totalBins) * 100;
+  return Math.max(0, Math.min(100, Math.round(raw * 100) / 100));
+}
+
+/**
+ * Informational (non-exit) alerts for how far price has moved through a
+ * position's range — an early heads-up that a single-sided deposit is
+ * being converted into the other token, well before it's fully out of
+ * range. Fires at most once per threshold crossing: each alert level has
+ * its own "already sent" flag that only re-arms once the reading drops
+ * back a few points below its threshold (RANGE_ALERT_HYSTERESIS_PCT),
+ * so a value oscillating right at the line doesn't spam repeat alerts.
+ * Returns { level: "EARLY" | "CRITICAL", consumedPct } when an alert
+ * should be sent this tick, or null.
+ */
+const RANGE_ALERT_HYSTERESIS_PCT = 5;
+
+export function checkRangeConsumedAlerts(position_address, positionData, mgmtConfig) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed || pos.range_entry_edge == null || !pos.range_total_bins) return null;
+
+  const { lower_bin: lowerBin, upper_bin: upperBin, active_bin: activeBin } = positionData;
+  if (lowerBin == null || upperBin == null || activeBin == null) return null;
+
+  const consumedPct = computeRangeConsumedPct(pos.range_entry_edge, lowerBin, upperBin, activeBin, pos.range_total_bins);
+  if (consumedPct == null) return null;
+
+  const earlyPct = mgmtConfig.rangeEarlyWarningPct ?? 20;
+  const criticalPct = mgmtConfig.rangeCriticalWarningPct ?? 50;
+  let changed = false;
+  let fired = null;
+
+  if (mgmtConfig.rangeCriticalWarningEnabled !== false && consumedPct >= criticalPct) {
+    if (!pos.range_critical_warning_sent) {
+      pos.range_critical_warning_sent = true;
+      changed = true;
+      fired = "CRITICAL";
+    }
+  } else if (pos.range_critical_warning_sent && consumedPct < criticalPct - RANGE_ALERT_HYSTERESIS_PCT) {
+    pos.range_critical_warning_sent = false;
+    changed = true;
+  }
+
+  // Skip early warning on a tick that already fired critical — no point
+  // sending both for the same crossing.
+  if (!fired && mgmtConfig.rangeEarlyWarningEnabled !== false && consumedPct >= earlyPct) {
+    if (!pos.range_early_warning_sent) {
+      pos.range_early_warning_sent = true;
+      changed = true;
+      fired = "EARLY";
+    }
+  } else if (pos.range_early_warning_sent && consumedPct < earlyPct - RANGE_ALERT_HYSTERESIS_PCT) {
+    pos.range_early_warning_sent = false;
+    changed = true;
+  }
+
+  if (changed) save(state);
+  return fired ? { level: fired, consumedPct } : null;
 }
 
 /**

@@ -49,6 +49,12 @@
   "jitoEnabled": false,
   "jitoTipLamports": 50000,
 
+  "_comment5": "Range-consumed alerts: informational only (never closes a position) — notifies when a single-sided position's active bin has moved this % of the way through its range toward the far edge, i.e. how much SOL looks converted into the base token so far. Computed from bin data already fetched every tick, no extra RPC calls. Optional, default on. Toggleable live via the Telegram bot's Settings button.",
+  "rangeEarlyWarningEnabled": true,
+  "rangeEarlyWarningPct": 20,
+  "rangeCriticalWarningEnabled": true,
+  "rangeCriticalWarningPct": 50,
+
   "_comment3": "Global auto-exit kill-switch. Also toggleable live via Telegram /pause /resume — this is just the on-disk default.",
   "paused": false
 }

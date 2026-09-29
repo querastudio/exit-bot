@@ -46,6 +46,8 @@ const SETTING_LABELS = {
   minFeePerTvl24h: "Min fee/TVL 24h (%)",
   minAgeBeforeYieldCheck: "Min umur posisi sebelum cek yield (menit)",
   jitoTipLamports: "Jito tip (lamports)",
+  rangeEarlyWarningPct: "Early warning threshold (% range terkonversi)",
+  rangeCriticalWarningPct: "Critical warning threshold (% range terkonversi)",
   dualSideTakeProfitPct: "Dual Side TP %",
   dualSideStopLossPct: "Dual Side SL %",
   dualSideTrailingTriggerPct: "Dual Side Trailing trigger %",
@@ -236,6 +238,9 @@ function buildSettingsText() {
     `⚖️ <b>Strategi Dual Side</b>: ${m.dualSideEnabled ? "ON" : "OFF"}\n` +
     dualSideLine +
     `\n🛡️ <b>Jito anti-MEV</b>: ${m.jitoEnabled ? `ON (tip ${m.jitoTipLamports} lamports)` : "OFF"}\n` +
+    `\n🟡 <b>Range alerts</b> (info doang, tidak nge-close posisi):\n` +
+    `Early warning: ${m.rangeEarlyWarningEnabled ? `ON (≥${m.rangeEarlyWarningPct}%)` : "OFF"}\n` +
+    `Critical warning: ${m.rangeCriticalWarningEnabled ? `ON (≥${m.rangeCriticalWarningPct}%)` : "OFF"}\n` +
     `\nTap salah satu buat ubah nilainya.`
   );
 }
@@ -285,6 +290,14 @@ function buildSettingsKeyboard() {
   if (m.jitoEnabled) {
     rows.push([{ text: `Jito tip: ${m.jitoTipLamports} lamports`, callback_data: "edit_jito_tip" }]);
   }
+  rows.push([{ text: `🟡 Early warning: ${m.rangeEarlyWarningEnabled ? "ON" : "OFF"}`, callback_data: "toggle_range_early" }]);
+  if (m.rangeEarlyWarningEnabled) {
+    rows.push([{ text: `Early threshold: ${m.rangeEarlyWarningPct}%`, callback_data: "edit_range_early_pct" }]);
+  }
+  rows.push([{ text: `🟠 Critical warning: ${m.rangeCriticalWarningEnabled ? "ON" : "OFF"}`, callback_data: "toggle_range_critical" }]);
+  if (m.rangeCriticalWarningEnabled) {
+    rows.push([{ text: `Critical threshold: ${m.rangeCriticalWarningPct}%`, callback_data: "edit_range_critical_pct" }]);
+  }
   rows.push([{ text: "⬅️ Back", callback_data: "back_to_positions" }]);
   return { inline_keyboard: rows };
 }
@@ -320,6 +333,7 @@ async function handleMessage(msg) {
     if (key === "confirmTicks") value = Math.max(1, Math.round(value));
     if (key === "jitoTipLamports") value = Math.max(0, Math.round(value));
     if (key === "minAgeBeforeYieldCheck" || key === "outOfRangeWaitMinutes") value = Math.max(0, Math.round(value));
+    if (key === "rangeEarlyWarningPct" || key === "rangeCriticalWarningPct") value = Math.max(0, Math.min(100, value));
     awaitingSetting = null;
     updateManagementSetting(key, value);
     log("telegram-bot", `Setting ${key} updated to ${value} via Telegram`);
@@ -497,6 +511,24 @@ async function handleCallbackQuery(query) {
     return;
   }
 
+  if (data === "toggle_range_early") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.rangeEarlyWarningEnabled;
+    updateManagementSetting("rangeEarlyWarningEnabled", enabled);
+    log("telegram-bot", `Range early warning ${enabled ? "enabled" : "disabled"} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
+  if (data === "toggle_range_critical") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.rangeCriticalWarningEnabled;
+    updateManagementSetting("rangeCriticalWarningEnabled", enabled);
+    log("telegram-bot", `Range critical warning ${enabled ? "enabled" : "disabled"} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
   if (data === "toggle_jito") {
     await answerCallbackQuery(query.id);
     const enabled = !config.management.jitoEnabled;
@@ -527,6 +559,8 @@ async function handleCallbackQuery(query) {
       edit_dual_trail_drop: "dualSideTrailingDropPct",
       edit_confirm_ticks: "confirmTicks",
       edit_jito_tip: "jitoTipLamports",
+      edit_range_early_pct: "rangeEarlyWarningPct",
+      edit_range_critical_pct: "rangeCriticalWarningPct",
     };
     const key = map[data];
     if (!key) {

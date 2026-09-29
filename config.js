@@ -126,6 +126,17 @@ export const config = {
     // this feature existed. Toggleable live via the Telegram Settings menu.
     jitoEnabled: !!u.jitoEnabled,
     jitoTipLamports: Number(u.jitoTipLamports ?? 50000),
+    // Range-consumed alerts: notify (don't close) when a single-sided
+    // position's active bin has moved a given % of the way through its
+    // range toward the far edge — an early heads-up that SOL is being
+    // converted into the base token before it's fully out of range. Purely
+    // informational, computed from bin data already fetched every tick (no
+    // extra RPC calls). Defaults on so existing installs start seeing these
+    // after upgrade; thresholds/toggles editable live via Telegram Settings.
+    rangeEarlyWarningEnabled: u.rangeEarlyWarningEnabled == null ? true : !!u.rangeEarlyWarningEnabled,
+    rangeEarlyWarningPct: Number(u.rangeEarlyWarningPct ?? 20),
+    rangeCriticalWarningEnabled: u.rangeCriticalWarningEnabled == null ? true : !!u.rangeCriticalWarningEnabled,
+    rangeCriticalWarningPct: Number(u.rangeCriticalWarningPct ?? 50),
   },
   poll: {
     // How often (in seconds) the bot checks position PnL. NOT editable live —

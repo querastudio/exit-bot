@@ -23,6 +23,7 @@ const {
   detectFeeClaim,
   detectPnlSpike,
   isTopupSettling,
+  checkRangeConsumedAlerts,
   updatePnlAndCheckExits,
   getTrackedPosition,
   recordFailedSwap,
@@ -160,6 +161,71 @@ test("a fee-claim-triggered settling guard suppresses a would-be premature TRAIL
   assert.equal(isTopupSettling("posFE", 1, mgmt), true);
   const exit = updatePnlAndCheckExits("posFE", { ...baseTick, pnl_pct: 1 }, mgmt);
   assert.equal(exit, null);
+});
+
+// ── checkRangeConsumedAlerts ──
+
+const mgmtRangeAlerts = {
+  rangeEarlyWarningEnabled: true,
+  rangeEarlyWarningPct: 20,
+  rangeCriticalWarningEnabled: true,
+  rangeCriticalWarningPct: 50,
+};
+
+test("checkRangeConsumedAlerts fires EARLY then CRITICAL as the active bin moves through the range", () => {
+  // Deposited with price below the range (entry edge = lower): active bin
+  // starts at the lower edge, 0% consumed.
+  ensurePositionTracked("posRA", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  assert.equal(getTrackedPosition("posRA").range_entry_edge, "lower");
+
+  assert.equal(checkRangeConsumedAlerts("posRA", { lower_bin: 0, upper_bin: 100, active_bin: 10 }, mgmtRangeAlerts), null);
+
+  const early = checkRangeConsumedAlerts("posRA", { lower_bin: 0, upper_bin: 100, active_bin: 25 }, mgmtRangeAlerts);
+  assert.equal(early.level, "EARLY");
+  assert.equal(early.consumedPct, 25);
+
+  // Doesn't refire EARLY every tick while still above threshold.
+  assert.equal(checkRangeConsumedAlerts("posRA", { lower_bin: 0, upper_bin: 100, active_bin: 30 }, mgmtRangeAlerts), null);
+
+  const critical = checkRangeConsumedAlerts("posRA", { lower_bin: 0, upper_bin: 100, active_bin: 55 }, mgmtRangeAlerts);
+  assert.equal(critical.level, "CRITICAL");
+  assert.equal(critical.consumedPct, 55);
+});
+
+test("checkRangeConsumedAlerts re-arms EARLY only after dropping back below the hysteresis band", () => {
+  ensurePositionTracked("posRB", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  const fired = checkRangeConsumedAlerts("posRB", { lower_bin: 0, upper_bin: 100, active_bin: 25 }, mgmtRangeAlerts);
+  assert.equal(fired.level, "EARLY");
+
+  // Bounces back down but not far enough below threshold (20 - 5 = 15) to re-arm.
+  assert.equal(checkRangeConsumedAlerts("posRB", { lower_bin: 0, upper_bin: 100, active_bin: 18 }, mgmtRangeAlerts), null);
+  assert.equal(checkRangeConsumedAlerts("posRB", { lower_bin: 0, upper_bin: 100, active_bin: 22 }, mgmtRangeAlerts), null);
+
+  // Drops well below the hysteresis band, then crosses again — fires again.
+  assert.equal(checkRangeConsumedAlerts("posRB", { lower_bin: 0, upper_bin: 100, active_bin: 5 }, mgmtRangeAlerts), null);
+  const refired = checkRangeConsumedAlerts("posRB", { lower_bin: 0, upper_bin: 100, active_bin: 22 }, mgmtRangeAlerts);
+  assert.equal(refired.level, "EARLY");
+});
+
+test("checkRangeConsumedAlerts respects the per-level enabled toggles", () => {
+  ensurePositionTracked("posRC", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  const mgmt = { ...mgmtRangeAlerts, rangeEarlyWarningEnabled: false };
+  assert.equal(checkRangeConsumedAlerts("posRC", { lower_bin: 0, upper_bin: 100, active_bin: 25 }, mgmt), null);
+  const critical = checkRangeConsumedAlerts("posRC", { lower_bin: 0, upper_bin: 100, active_bin: 55 }, mgmt);
+  assert.equal(critical.level, "CRITICAL");
+});
+
+test("checkRangeConsumedAlerts measures from the upper edge when price entered from above", () => {
+  ensurePositionTracked("posRD", { lower_bin: 0, upper_bin: 100, active_bin: 100 });
+  assert.equal(getTrackedPosition("posRD").range_entry_edge, "upper");
+  const fired = checkRangeConsumedAlerts("posRD", { lower_bin: 0, upper_bin: 100, active_bin: 40 }, mgmtRangeAlerts);
+  assert.equal(fired.level, "CRITICAL");
+  assert.equal(fired.consumedPct, 60);
+});
+
+test("checkRangeConsumedAlerts returns null for a position with no bin data tracked", () => {
+  ensurePositionTracked("posRE", {});
+  assert.equal(checkRangeConsumedAlerts("posRE", { lower_bin: 0, upper_bin: 100, active_bin: 90 }, mgmtRangeAlerts), null);
 });
 
 // ── isTopupSettling ──
