@@ -137,6 +137,18 @@ export const config = {
     rangeEarlyWarningPct: Number(u.rangeEarlyWarningPct ?? 20),
     rangeCriticalWarningEnabled: u.rangeCriticalWarningEnabled == null ? true : !!u.rangeCriticalWarningEnabled,
     rangeCriticalWarningPct: Number(u.rangeCriticalWarningPct ?? 50),
+    // Bin yield guard: flags a position that's consumed a lot of its range
+    // (binYieldGuardBinPct, default 50%) without earning fees to show for
+    // it (fee/TVL24h below binYieldGuardMinFeePerTvl24h, default 10%) — a
+    // sign the deposit may be heading into a low-liquidity/rug-risk zone
+    // rather than a healthy range walk. "notify" (default) sends a Telegram
+    // alert only; "close" wires it into the normal exit pipeline (still
+    // confirmTicks-gated) to auto-close instead. Toggleable live via the
+    // Telegram Settings menu.
+    binYieldGuardEnabled: u.binYieldGuardEnabled == null ? true : !!u.binYieldGuardEnabled,
+    binYieldGuardBinPct: Number(u.binYieldGuardBinPct ?? 50),
+    binYieldGuardMinFeePerTvl24h: Number(u.binYieldGuardMinFeePerTvl24h ?? 10),
+    binYieldGuardAction: u.binYieldGuardAction === "close" ? "close" : "notify",
   },
   poll: {
     // How often (in seconds) the bot checks position PnL. NOT editable live —

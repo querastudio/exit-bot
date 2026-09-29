@@ -48,6 +48,8 @@ const SETTING_LABELS = {
   jitoTipLamports: "Jito tip (lamports)",
   rangeEarlyWarningPct: "Early warning threshold (% range terkonversi)",
   rangeCriticalWarningPct: "Critical warning threshold (% range terkonversi)",
+  binYieldGuardBinPct: "Bin yield guard: bin threshold (%)",
+  binYieldGuardMinFeePerTvl24h: "Bin yield guard: min fee/TVL24h (%)",
   dualSideTakeProfitPct: "Dual Side TP %",
   dualSideStopLossPct: "Dual Side SL %",
   dualSideTrailingTriggerPct: "Dual Side Trailing trigger %",
@@ -251,6 +253,7 @@ function buildSettingsText() {
     `\n🟡 <b>Range alerts</b> (info doang, tidak nge-close posisi):\n` +
     `Early warning: ${m.rangeEarlyWarningEnabled ? `ON (≥${m.rangeEarlyWarningPct}%)` : "OFF"}\n` +
     `Critical warning: ${m.rangeCriticalWarningEnabled ? `ON (≥${m.rangeCriticalWarningPct}%)` : "OFF"}\n` +
+    `\n🚨 <b>Bin Yield Guard</b>: ${m.binYieldGuardEnabled ? `ON (bin ≥${m.binYieldGuardBinPct}% + fee/TVL24h &lt;${m.binYieldGuardMinFeePerTvl24h}% → ${m.binYieldGuardAction === "close" ? "AUTO CUTLOSS" : "notify aja"})` : "OFF"}\n` +
     `\nTap salah satu buat ubah nilainya.`
   );
 }
@@ -308,6 +311,14 @@ function buildSettingsKeyboard() {
   if (m.rangeCriticalWarningEnabled) {
     rows.push([{ text: `Critical threshold: ${m.rangeCriticalWarningPct}%`, callback_data: "edit_range_critical_pct" }]);
   }
+  rows.push([{ text: `🚨 Bin Yield Guard: ${m.binYieldGuardEnabled ? "ON" : "OFF"}`, callback_data: "toggle_bin_yield_guard" }]);
+  if (m.binYieldGuardEnabled) {
+    rows.push([
+      { text: `Bin threshold: ${m.binYieldGuardBinPct}%`, callback_data: "edit_bin_yield_bin_pct" },
+      { text: `Min fee/TVL24h: ${m.binYieldGuardMinFeePerTvl24h}%`, callback_data: "edit_bin_yield_min_fee" },
+    ]);
+    rows.push([{ text: `Aksi: ${m.binYieldGuardAction === "close" ? "🔴 Auto cutloss" : "🟡 Notify aja"}`, callback_data: "cycle_bin_yield_action" }]);
+  }
   rows.push([{ text: "⬅️ Back", callback_data: "back_to_positions" }]);
   return { inline_keyboard: rows };
 }
@@ -343,7 +354,8 @@ async function handleMessage(msg) {
     if (key === "confirmTicks") value = Math.max(1, Math.round(value));
     if (key === "jitoTipLamports") value = Math.max(0, Math.round(value));
     if (key === "minAgeBeforeYieldCheck" || key === "outOfRangeWaitMinutes") value = Math.max(0, Math.round(value));
-    if (key === "rangeEarlyWarningPct" || key === "rangeCriticalWarningPct") value = Math.max(0, Math.min(100, value));
+    if (key === "rangeEarlyWarningPct" || key === "rangeCriticalWarningPct" || key === "binYieldGuardBinPct") value = Math.max(0, Math.min(100, value));
+    if (key === "binYieldGuardMinFeePerTvl24h") value = Math.max(0, value);
     awaitingSetting = null;
     updateManagementSetting(key, value);
     log("telegram-bot", `Setting ${key} updated to ${value} via Telegram`);
@@ -539,6 +551,24 @@ async function handleCallbackQuery(query) {
     return;
   }
 
+  if (data === "toggle_bin_yield_guard") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.binYieldGuardEnabled;
+    updateManagementSetting("binYieldGuardEnabled", enabled);
+    log("telegram-bot", `Bin yield guard ${enabled ? "enabled" : "disabled"} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
+  if (data === "cycle_bin_yield_action") {
+    await answerCallbackQuery(query.id);
+    const next = config.management.binYieldGuardAction === "close" ? "notify" : "close";
+    updateManagementSetting("binYieldGuardAction", next);
+    log("telegram-bot", `Bin yield guard action set to ${next} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
   if (data === "toggle_jito") {
     await answerCallbackQuery(query.id);
     const enabled = !config.management.jitoEnabled;
@@ -571,6 +601,8 @@ async function handleCallbackQuery(query) {
       edit_jito_tip: "jitoTipLamports",
       edit_range_early_pct: "rangeEarlyWarningPct",
       edit_range_critical_pct: "rangeCriticalWarningPct",
+      edit_bin_yield_bin_pct: "binYieldGuardBinPct",
+      edit_bin_yield_min_fee: "binYieldGuardMinFeePerTvl24h",
     };
     const key = map[data];
     if (!key) {

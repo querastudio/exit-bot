@@ -27,6 +27,7 @@ import {
   inGracePeriod,
   isTopupSettling,
   checkRangeConsumedAlerts,
+  checkBinYieldGuardNotify,
   consumeRecoveryAlert,
 } from "./state.js";
 import { telegramEnabled, sendTelegram, escapeHtml } from "./telegram.js";
@@ -118,6 +119,15 @@ async function tick() {
           `${emoji} <b>${label}</b> — ${escapeHtml(p.pair)}\n` +
           `${rangeAlert.consumedPct.toFixed(0)}% dari range sudah terkonversi\n` +
           `PnL: ${pnlText} | Yield (fee/TVL24h): ${yieldText}`,
+        ).catch(() => {});
+      }
+
+      const binYieldAlert = checkBinYieldGuardNotify(p.position, p, config.management);
+      if (binYieldAlert) {
+        sendTelegram(
+          `🚨 <b>Bin Yield Guard</b> — ${escapeHtml(p.pair)}\n` +
+          `${binYieldAlert.consumedPct.toFixed(0)}% range terkonversi, tapi fee/TVL24h cuma ${binYieldAlert.feePerTvl.toFixed(2)}%\n` +
+          `Yield kurang sepadan dengan risiko — worth dipertimbangkan buat cutloss manual.`,
         ).catch(() => {});
       }
 

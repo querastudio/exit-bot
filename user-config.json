@@ -51,9 +51,15 @@
 
   "_comment5": "Range-consumed alerts: informational only (never closes a position) — notifies when a single-sided position's active bin has moved this % of the way through its range toward the far edge, i.e. how much SOL looks converted into the base token so far. Computed from bin data already fetched every tick, no extra RPC calls. Optional, default on. Toggleable live via the Telegram bot's Settings button.",
   "rangeEarlyWarningEnabled": true,
-  "rangeEarlyWarningPct": 20,
+  "rangeEarlyWarningPct": 30,
   "rangeCriticalWarningEnabled": true,
   "rangeCriticalWarningPct": 50,
+
+  "_comment6": "Bin yield guard: flags a position that's consumed a lot of its range (binYieldGuardBinPct) without earning fees to show for it (fee/TVL24h below binYieldGuardMinFeePerTvl24h) — sign the deposit may be heading into a low-liquidity/rug-risk zone rather than a healthy range walk. binYieldGuardAction 'notify' (default) sends a Telegram alert only; 'close' wires it into the normal exit pipeline (still confirmTicks-gated) to auto-close instead. Toggleable live via the Telegram bot's Settings button.",
+  "binYieldGuardEnabled": true,
+  "binYieldGuardBinPct": 50,
+  "binYieldGuardMinFeePerTvl24h": 10,
+  "binYieldGuardAction": "notify",
 
   "_comment3": "Global auto-exit kill-switch. Also toggleable live via Telegram /pause /resume — this is just the on-disk default.",
   "paused": false

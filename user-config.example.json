@@ -55,6 +55,12 @@
   "rangeCriticalWarningEnabled": true,
   "rangeCriticalWarningPct": 50,
 
+  "_comment6": "Bin yield guard: flags a position that's consumed a lot of its range (binYieldGuardBinPct) without earning fees to show for it (fee/TVL24h below binYieldGuardMinFeePerTvl24h) — sign the deposit may be heading into a low-liquidity/rug-risk zone rather than a healthy range walk. binYieldGuardAction 'notify' (default) sends a Telegram alert only; 'close' wires it into the normal exit pipeline (still confirmTicks-gated) to auto-close instead. Toggleable live via the Telegram bot's Settings button.",
+  "binYieldGuardEnabled": true,
+  "binYieldGuardBinPct": 50,
+  "binYieldGuardMinFeePerTvl24h": 10,
+  "binYieldGuardAction": "notify",
+
   "_comment3": "Global auto-exit kill-switch. Also toggleable live via Telegram /pause /resume — this is just the on-disk default.",
   "paused": false
 }

@@ -154,6 +154,7 @@ export function ensurePositionTracked(position_address, positionData) {
     range_total_bins: rangeTotalBins,
     range_early_warning_sent: false,
     range_critical_warning_sent: false,
+    bin_yield_guard_notified: false,
   };
   save(state);
   log("state", `Tracked new position ${position_address.slice(0, 8)} in pool ${state.positions[position_address].pool_name}`);
@@ -589,12 +590,65 @@ export function checkRangeConsumedAlerts(position_address, positionData, mgmtCon
 }
 
 /**
+ * Informational alert (never closes a position) for the same "range
+ * consumed too far without earning enough fees back" condition as the
+ * BIN_YIELD_GUARD exit action in updatePnlAndCheckExits — but only active
+ * when binYieldGuardAction is "notify" (the default). Fires at most once
+ * per crossing, same hysteresis re-arm pattern as checkRangeConsumedAlerts.
+ * Returns { consumedPct, feePerTvl } when it should fire this tick, or null.
+ */
+export function checkBinYieldGuardNotify(position_address, positionData, mgmtConfig) {
+  if (!mgmtConfig.binYieldGuardEnabled || mgmtConfig.binYieldGuardAction === "close") return null;
+
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed || pos.range_entry_edge == null || !pos.range_total_bins) return null;
+
+  const { lower_bin: lowerBin, upper_bin: upperBin, active_bin: activeBin, fee_per_tvl_24h: feePerTvl } = positionData;
+  if (lowerBin == null || upperBin == null || activeBin == null || feePerTvl == null) return null;
+
+  const consumedPct = computeRangeConsumedPct(pos.range_entry_edge, lowerBin, upperBin, activeBin, pos.range_total_bins);
+  if (consumedPct == null) return null;
+
+  const binThreshold = mgmtConfig.binYieldGuardBinPct ?? 50;
+  const yieldThreshold = mgmtConfig.binYieldGuardMinFeePerTvl24h ?? 10;
+  const conditionMet = consumedPct >= binThreshold && feePerTvl < yieldThreshold;
+
+  let changed = false;
+  let fired = false;
+  if (conditionMet && !pos.bin_yield_guard_notified) {
+    pos.bin_yield_guard_notified = true;
+    changed = true;
+    fired = true;
+  } else if (!conditionMet && pos.bin_yield_guard_notified) {
+    // Re-arms as soon as either leg of the condition clears (not just the
+    // bin side, unlike the hysteresis on the plain range alerts above) —
+    // yield can recover on its own as fees accrue, without price moving at all.
+    pos.bin_yield_guard_notified = false;
+    changed = true;
+  }
+
+  if (changed) save(state);
+  return fired ? { consumedPct, feePerTvl } : null;
+}
+
+/**
  * Check all exit conditions for a position (trailing TP, stop loss, OOR, low yield).
  * Updates out_of_range_since / trailing_active as a side effect.
  * Returns { action, reason } or null.
  */
 export function updatePnlAndCheckExits(position_address, positionData, mgmtConfig) {
-  const { pnl_pct: currentPnlPct, pnl_pct_suspicious, in_range, oor_side, fee_per_tvl_24h, age_minutes } = positionData;
+  const {
+    pnl_pct: currentPnlPct,
+    pnl_pct_suspicious,
+    in_range,
+    oor_side,
+    fee_per_tvl_24h,
+    age_minutes,
+    lower_bin: lowerBin,
+    upper_bin: upperBin,
+    active_bin: activeBin,
+  } = positionData;
   const state = load();
   const pos = state.positions[position_address];
   if (!pos || pos.closed) return null;
@@ -799,6 +853,26 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
       action: "LOW_YIELD",
       reason: `Low yield: fee/TVL ${fee_per_tvl_24h.toFixed(2)}% < min ${mgmtConfig.minFeePerTvl24h}% (age: ${age_minutes ?? "?"}m)`,
     };
+  }
+
+  // ── Bin yield guard (auto-close mode only) ──
+  // Same "range consumed too far without earning enough fees" condition as
+  // checkBinYieldGuardNotify() below, but wired into the normal exit-signal
+  // pipeline (confirmTicks-gated, same as every other exit here) instead of
+  // a one-shot Telegram alert — only active when binYieldGuardAction is
+  // "close" rather than the default "notify". Kept as a separate check
+  // (not folded into Low Yield above) since it's gated on range consumed,
+  // not position age, and uses its own thresholds.
+  if (mgmtConfig.binYieldGuardEnabled && mgmtConfig.binYieldGuardAction === "close" && fee_per_tvl_24h != null) {
+    const consumedPct = computeRangeConsumedPct(pos.range_entry_edge, lowerBin, upperBin, activeBin, pos.range_total_bins);
+    const binThreshold = mgmtConfig.binYieldGuardBinPct ?? 50;
+    const yieldThreshold = mgmtConfig.binYieldGuardMinFeePerTvl24h ?? 10;
+    if (consumedPct != null && consumedPct >= binThreshold && fee_per_tvl_24h < yieldThreshold) {
+      return {
+        action: "BIN_YIELD_GUARD",
+        reason: `Bin yield guard: ${consumedPct.toFixed(0)}% range consumed, fee/TVL24h ${fee_per_tvl_24h.toFixed(2)}% < ${yieldThreshold}%`,
+      };
+    }
   }
 
   return null;

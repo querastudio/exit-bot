@@ -24,6 +24,7 @@ const {
   detectPnlSpike,
   isTopupSettling,
   checkRangeConsumedAlerts,
+  checkBinYieldGuardNotify,
   getRangeConsumedPct,
   updatePnlAndCheckExits,
   getTrackedPosition,
@@ -243,6 +244,112 @@ test("getRangeConsumedPct returns null for an untracked or bin-less position", (
   assert.equal(getRangeConsumedPct("does-not-exist", { lower_bin: 0, upper_bin: 100, active_bin: 10 }), null);
   ensurePositionTracked("posRG", {});
   assert.equal(getRangeConsumedPct("posRG", { lower_bin: 0, upper_bin: 100, active_bin: 10 }), null);
+});
+
+// ── checkBinYieldGuardNotify / BIN_YIELD_GUARD close mode ──
+
+const mgmtBinYield = {
+  binYieldGuardEnabled: true,
+  binYieldGuardBinPct: 50,
+  binYieldGuardMinFeePerTvl24h: 10,
+  binYieldGuardAction: "notify",
+};
+
+test("checkBinYieldGuardNotify fires once when bin consumed crosses the threshold with low yield", () => {
+  ensurePositionTracked("posBY", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  // Bin below threshold — no alert yet even with low yield.
+  assert.equal(
+    checkBinYieldGuardNotify("posBY", { lower_bin: 0, upper_bin: 100, active_bin: 30, fee_per_tvl_24h: 2 }, mgmtBinYield),
+    null,
+  );
+  const fired = checkBinYieldGuardNotify(
+    "posBY",
+    { lower_bin: 0, upper_bin: 100, active_bin: 55, fee_per_tvl_24h: 2 },
+    mgmtBinYield,
+  );
+  assert.equal(fired.consumedPct, 55);
+  assert.equal(fired.feePerTvl, 2);
+
+  // Doesn't refire every tick while condition still holds.
+  assert.equal(
+    checkBinYieldGuardNotify("posBY", { lower_bin: 0, upper_bin: 100, active_bin: 60, fee_per_tvl_24h: 1 }, mgmtBinYield),
+    null,
+  );
+});
+
+test("checkBinYieldGuardNotify does not fire when yield is healthy despite high bin consumption", () => {
+  ensurePositionTracked("posBZ", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  assert.equal(
+    checkBinYieldGuardNotify("posBZ", { lower_bin: 0, upper_bin: 100, active_bin: 70, fee_per_tvl_24h: 15 }, mgmtBinYield),
+    null,
+  );
+});
+
+test("checkBinYieldGuardNotify re-arms as soon as yield recovers, even without price moving", () => {
+  ensurePositionTracked("posCA", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  const fired = checkBinYieldGuardNotify(
+    "posCA",
+    { lower_bin: 0, upper_bin: 100, active_bin: 55, fee_per_tvl_24h: 2 },
+    mgmtBinYield,
+  );
+  assert.equal(fired.consumedPct, 55);
+
+  // Yield recovers above threshold — re-arms even though bin consumption stays high.
+  assert.equal(
+    checkBinYieldGuardNotify("posCA", { lower_bin: 0, upper_bin: 100, active_bin: 55, fee_per_tvl_24h: 12 }, mgmtBinYield),
+    null,
+  );
+  const refired = checkBinYieldGuardNotify(
+    "posCA",
+    { lower_bin: 0, upper_bin: 100, active_bin: 55, fee_per_tvl_24h: 3 },
+    mgmtBinYield,
+  );
+  assert.equal(refired.consumedPct, 55);
+});
+
+test("checkBinYieldGuardNotify is a no-op when binYieldGuardAction is 'close' (handled by updatePnlAndCheckExits instead)", () => {
+  ensurePositionTracked("posCB", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  const mgmt = { ...mgmtBinYield, binYieldGuardAction: "close" };
+  assert.equal(
+    checkBinYieldGuardNotify("posCB", { lower_bin: 0, upper_bin: 100, active_bin: 60, fee_per_tvl_24h: 2 }, mgmt),
+    null,
+  );
+});
+
+test("updatePnlAndCheckExits fires BIN_YIELD_GUARD when action mode is 'close' and thresholds are crossed", () => {
+  ensurePositionTracked("posCC", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  const mgmt = {
+    ...mgmtBinYield,
+    binYieldGuardAction: "close",
+    exitGracePeriodSec: 0,
+    trailingTakeProfit: false,
+    outOfRangeExitEnabled: false,
+    lowYieldExitEnabled: false,
+  };
+  const exit = updatePnlAndCheckExits(
+    "posCC",
+    { ...baseTick, pnl_pct: 1, lower_bin: 0, upper_bin: 100, active_bin: 60, fee_per_tvl_24h: 2 },
+    mgmt,
+  );
+  assert.equal(exit.action, "BIN_YIELD_GUARD");
+});
+
+test("updatePnlAndCheckExits withholds BIN_YIELD_GUARD when action mode is 'notify'", () => {
+  ensurePositionTracked("posCD", { lower_bin: 0, upper_bin: 100, active_bin: 0 });
+  const mgmt = {
+    ...mgmtBinYield,
+    binYieldGuardAction: "notify",
+    exitGracePeriodSec: 0,
+    trailingTakeProfit: false,
+    outOfRangeExitEnabled: false,
+    lowYieldExitEnabled: false,
+  };
+  const exit = updatePnlAndCheckExits(
+    "posCD",
+    { ...baseTick, pnl_pct: 1, lower_bin: 0, upper_bin: 100, active_bin: 60, fee_per_tvl_24h: 2 },
+    mgmt,
+  );
+  assert.equal(exit, null);
 });
 
 // ── isTopupSettling ──
