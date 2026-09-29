@@ -59,7 +59,7 @@
   "binYieldGuardEnabled": true,
   "binYieldGuardBinPct": 50,
   "binYieldGuardMinFeePerTvl24h": 10,
-  "binYieldGuardAction": "notify",
+  "binYieldGuardAction": "close",
 
   "_comment3": "Global auto-exit kill-switch. Also toggleable live via Telegram /pause /resume — this is just the on-disk default.",
   "paused": false
