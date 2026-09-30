@@ -63,7 +63,7 @@
   "binYieldGuardEnabled": true,
   "binYieldGuardBinPct": 60,
   "binYieldGuardMinFeePerTvl24h": 10,
-  "binYieldGuardAction": "notify",
+  "binYieldGuardAction": "close",
 
   "_comment7": "autoSwapTargetToken: which currency the post-close auto-swap converts leftover base token into ('SOL' or 'USDC'). Independent of solMode (which only affects how PnL/values are *reported* in Telegram) — this controls what Jupiter actually swaps to on-chain. Toggleable live via the Telegram bot's Settings button.",
   "autoSwapTargetToken": "USDC",
