@@ -255,6 +255,7 @@ function buildSettingsText() {
     `Early warning: ${m.rangeEarlyWarningEnabled ? `ON (≥${m.rangeEarlyWarningPct}%)` : "OFF"}\n` +
     `Critical warning: ${m.rangeCriticalWarningEnabled ? `ON (≥${m.rangeCriticalWarningPct}%)` : "OFF"}\n` +
     `\n🚨 <b>Bin Yield Guard</b>: ${m.binYieldGuardEnabled ? `ON (bin ≥${m.binYieldGuardBinPct}% + fee/TVL24h &lt;${m.binYieldGuardMinFeePerTvl24h}% → ${m.binYieldGuardAction === "close" ? "AUTO CUTLOSS" : "notify aja"})` : "OFF"}\n` +
+    `\n💱 <b>Auto-swap sisa token setelah close</b>: → ${m.autoSwapTargetToken}\n` +
     `\nTap salah satu buat ubah nilainya.`
   );
 }
@@ -321,6 +322,7 @@ function buildSettingsKeyboard() {
     ]);
     rows.push([{ text: `Aksi: ${m.binYieldGuardAction === "close" ? "🔴 Auto cutloss" : "🟡 Notify aja"}`, callback_data: "cycle_bin_yield_action" }]);
   }
+  rows.push([{ text: `💱 Auto-swap target: ${m.autoSwapTargetToken}`, callback_data: "cycle_swap_target" }]);
   rows.push([{ text: "⬅️ Back", callback_data: "back_to_positions" }]);
   return { inline_keyboard: rows };
 }
@@ -568,6 +570,15 @@ async function handleCallbackQuery(query) {
     const next = config.management.binYieldGuardAction === "close" ? "notify" : "close";
     updateManagementSetting("binYieldGuardAction", next);
     log("telegram-bot", `Bin yield guard action set to ${next} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
+  if (data === "cycle_swap_target") {
+    await answerCallbackQuery(query.id);
+    const next = config.management.autoSwapTargetToken === "USDC" ? "SOL" : "USDC";
+    updateManagementSetting("autoSwapTargetToken", next);
+    log("telegram-bot", `Auto-swap target set to ${next} via Telegram`);
     await showSettings(messageId);
     return;
   }

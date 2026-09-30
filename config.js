@@ -157,6 +157,12 @@ export const config = {
     binYieldGuardBinPct: Number(u.binYieldGuardBinPct ?? 50),
     binYieldGuardMinFeePerTvl24h: Number(u.binYieldGuardMinFeePerTvl24h ?? 10),
     binYieldGuardAction: u.binYieldGuardAction === "close" ? "close" : "notify",
+    // Which currency the post-close auto-swap converts leftover base token
+    // into. Independent of solMode (which only affects how PnL/values are
+    // *reported* in Telegram) — this controls what Jupiter actually swaps
+    // to on-chain. Defaults to SOL so existing installs are unaffected.
+    // Toggleable live via the Telegram bot's Settings button.
+    autoSwapTargetToken: u.autoSwapTargetToken === "USDC" ? "USDC" : "SOL",
   },
   poll: {
     // How often (in seconds) the bot checks position PnL. NOT editable live —
@@ -170,7 +176,17 @@ export const config = {
   },
   tokens: {
     SOL: "So11111111111111111111111111111111111111112",
+    USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   },
+};
+
+// Display/formatting metadata for the auto-swap target currencies above —
+// decimals matter for converting raw on-chain amounts to a human-readable
+// figure (SOL has 9, USDC has 6), separately from which mint Jupiter is
+// told to swap into.
+export const SWAP_TARGET_TOKEN_META = {
+  SOL: { decimals: 9, symbol: "SOL", prefix: "◎" },
+  USDC: { decimals: 6, symbol: "USDC", prefix: "$" },
 };
 
 const MANAGEMENT_KEYS = new Set(Object.keys(config.management));

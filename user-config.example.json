@@ -63,6 +63,9 @@
   "binYieldGuardMinFeePerTvl24h": 10,
   "binYieldGuardAction": "notify",
 
+  "_comment7": "autoSwapTargetToken: which currency the post-close auto-swap converts leftover base token into ('SOL' or 'USDC'). Independent of solMode (which only affects how PnL/values are *reported* in Telegram) — this controls what Jupiter actually swaps to on-chain. Optional, defaults to 'SOL'. Toggleable live via the Telegram bot's Settings button.",
+  "autoSwapTargetToken": "SOL",
+
   "_comment3": "Global auto-exit kill-switch. Also toggleable live via Telegram /pause /resume — this is just the on-disk default.",
   "paused": false
 }

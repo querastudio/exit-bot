@@ -12,7 +12,7 @@ import bs58 from "bs58";
 process.env.WALLET_PRIVATE_KEY = bs58.encode(Keypair.generate().secretKey);
 process.env.RPC_URL = "https://example.invalid";
 
-const { formatSolLamports } = await import("../actions.js");
+const { formatSolLamports, formatTargetTokenAmount } = await import("../actions.js");
 
 test("formatSolLamports converts lamports to a SOL display string", () => {
   assert.equal(formatSolLamports(123400000), "◎0.1234");
@@ -23,4 +23,20 @@ test("formatSolLamports returns null for missing or non-numeric input", () => {
   assert.equal(formatSolLamports(null), null);
   assert.equal(formatSolLamports(undefined), null);
   assert.equal(formatSolLamports("not-a-number"), null);
+});
+
+test("formatTargetTokenAmount formats SOL (9 decimals) and USDC (6 decimals) correctly", () => {
+  assert.equal(formatTargetTokenAmount(123400000, "SOL"), "◎0.1234");
+  assert.equal(formatTargetTokenAmount(500000, "USDC"), "$0.5000");
+  assert.equal(formatTargetTokenAmount(1234567, "USDC"), "$1.2346");
+});
+
+test("formatTargetTokenAmount returns null for missing or non-numeric input", () => {
+  assert.equal(formatTargetTokenAmount(null, "USDC"), null);
+  assert.equal(formatTargetTokenAmount(undefined, "SOL"), null);
+  assert.equal(formatTargetTokenAmount("not-a-number", "USDC"), null);
+});
+
+test("formatTargetTokenAmount falls back to SOL formatting for an unrecognized target symbol", () => {
+  assert.equal(formatTargetTokenAmount(123400000, "DOGE"), "◎0.1234");
 });

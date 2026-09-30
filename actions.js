@@ -5,10 +5,10 @@
  * one lock so they never race on the same position.
  */
 import { connection, wallet } from "./client.js";
-import { config } from "./config.js";
+import { config, SWAP_TARGET_TOKEN_META } from "./config.js";
 import { log } from "./logger.js";
 import { closePositionOnChain } from "./close.js";
-import { getTokenBalance, swapToSol } from "./jupiter.js";
+import { getTokenBalance, swapToTarget } from "./jupiter.js";
 import { recordClose, recordFailedSwap, clearFailedSwap, getPendingSwapMints } from "./state.js";
 import { sendTelegram, escapeHtml } from "./telegram.js";
 import { tryLock, unlock } from "./lock.js";
@@ -24,6 +24,22 @@ export function formatSolLamports(lamports) {
   const n = Number(lamports);
   if (!Number.isFinite(n)) return null;
   return `◎${(n / 1e9).toFixed(4)}`;
+}
+
+/**
+ * Raw amount (string/number from Jupiter's quote) -> "◎0.1234" or "$0.5000"
+ * depending on `targetSymbol` (defaults to the live configured auto-swap
+ * target), or null if absent. Takes the symbol as a parameter — rather than
+ * always reading config.management.autoSwapTargetToken directly — so it can
+ * be tested against both SOL and USDC without depending on (or mutating)
+ * the real on-disk user-config.json.
+ */
+export function formatTargetTokenAmount(rawAmount, targetSymbol = config.management.autoSwapTargetToken) {
+  if (rawAmount == null) return null;
+  const n = Number(rawAmount);
+  if (!Number.isFinite(n)) return null;
+  const meta = SWAP_TARGET_TOKEN_META[targetSymbol] ?? SWAP_TARGET_TOKEN_META.SOL;
+  return `${meta.prefix}${(n / 10 ** meta.decimals).toFixed(4)}`;
 }
 
 /**
@@ -68,17 +84,18 @@ export async function performClose(position, action, reason, { source = "auto" }
       `Reason: ${escapeHtml(reason)}`,
     );
 
-    if (config.swap.autoSwapAfterClose && result.base_mint && result.base_mint !== config.tokens.SOL) {
+    const swapTargetMint = config.tokens[config.management.autoSwapTargetToken] ?? config.tokens.SOL;
+    if (config.swap.autoSwapAfterClose && result.base_mint && result.base_mint !== swapTargetMint) {
       try {
         const { raw } = await getTokenBalance(connection, wallet.publicKey, result.base_mint);
         if (raw > 0n) {
-          const swapResult = await swapToSol(wallet, result.base_mint, raw);
+          const swapResult = await swapToTarget(wallet, result.base_mint, raw);
           if (swapResult.success && !swapResult.skipped) {
             clearFailedSwap(result.base_mint);
-            const minOut = formatSolLamports(swapResult.minOutAmount);
+            const minOut = formatTargetTokenAmount(swapResult.minOutAmount);
             const minOutLine = minOut ? ` (min dijamin: ${minOut})` : "";
             await sendTelegram(
-              `Swap: ${escapeHtml(result.base_mint.slice(0, 8))}… → SOL ✅${minOutLine} (${escapeHtml(position.pair)})`,
+              `Swap: ${escapeHtml(result.base_mint.slice(0, 8))}… → ${config.management.autoSwapTargetToken} ✅${minOutLine} (${escapeHtml(position.pair)})`,
             );
           } else if (!swapResult.success) {
             recordFailedSwap(result.base_mint);
@@ -117,11 +134,11 @@ export async function sweepPendingSwaps() {
         clearFailedSwap(mint);
         continue;
       }
-      const swapResult = await swapToSol(wallet, mint, raw);
+      const swapResult = await swapToTarget(wallet, mint, raw);
       if (swapResult.success && !swapResult.skipped) {
         clearFailedSwap(mint);
         log("swap", `Pending swap retry succeeded for ${mint.slice(0, 8)}`);
-        await sendTelegram(`Swap (retry): ${escapeHtml(mint.slice(0, 8))}… → SOL ✅`);
+        await sendTelegram(`Swap (retry): ${escapeHtml(mint.slice(0, 8))}… → ${config.management.autoSwapTargetToken} ✅`);
       } else if (!swapResult.success) {
         recordFailedSwap(mint);
       }

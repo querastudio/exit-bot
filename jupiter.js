@@ -35,10 +35,15 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function swapToSolOnce(wallet, inputMint, amountRaw) {
+/** Mint address the post-close auto-swap should convert leftover base token into. */
+function targetMint() {
+  return config.tokens[config.management.autoSwapTargetToken] ?? config.tokens.SOL;
+}
+
+async function swapToTargetOnce(wallet, inputMint, amountRaw) {
   const orderParams = new URLSearchParams({
     inputMint,
-    outputMint: config.tokens.SOL,
+    outputMint: targetMint(),
     amount: amountRaw.toString(),
     taker: wallet.publicKey.toString(),
     slippageBps: String(config.swap.slippageBps),
@@ -74,11 +79,11 @@ async function swapToSolOnce(wallet, inputMint, amountRaw) {
   return {
     signature: result.signature,
     // Jupiter's quoted output and its slippage-adjusted guaranteed minimum
-    // (both in lamports of SOL, since outputMint is always SOL here) —
-    // surfaced so a swap that lands far below what was quoted is visible
-    // in the notification, not just a bare "success". Optional chaining
-    // since exact field names aren't something this code should assume
-    // will never change on Jupiter's side — absence just means no figures
+    // (both in raw units of the configured target token) — surfaced so a
+    // swap that lands far below what was quoted is visible in the
+    // notification, not just a bare "success". Optional chaining since
+    // exact field names aren't something this code should assume will
+    // never change on Jupiter's side — absence just means no figures
     // shown, never a crash.
     outAmount: order?.outAmount ?? null,
     minOutAmount: order?.otherAmountThreshold ?? null,
@@ -86,26 +91,29 @@ async function swapToSolOnce(wallet, inputMint, amountRaw) {
 }
 
 /**
- * Swap `amountRaw` of `inputMint` to SOL via Jupiter's order+execute flow
- * (api.jup.ag/swap/v2). Jupiter's own relay broadcasts & lands the tx, so
- * no local RPC send/confirm is needed. Retries up to SWAP_MAX_ATTEMPTS times
- * on failure (fresh order each attempt, since routes/blockhashes go stale).
- * Returns { success, signature } or { success:false, error }.
+ * Swap `amountRaw` of `inputMint` to the configured auto-swap target
+ * (config.management.autoSwapTargetToken — SOL or USDC) via Jupiter's
+ * order+execute flow (api.jup.ag/swap/v2). Jupiter's own relay broadcasts &
+ * lands the tx, so no local RPC send/confirm is needed. Retries up to
+ * SWAP_MAX_ATTEMPTS times on failure (fresh order each attempt, since
+ * routes/blockhashes go stale). Returns { success, signature } or
+ * { success:false, error }.
  */
-export async function swapToSol(wallet, inputMint, amountRaw) {
+export async function swapToTarget(wallet, inputMint, amountRaw) {
   if (amountRaw <= DUST_LAMPORTS) {
     return { success: true, skipped: true, reason: "dust amount, nothing to swap" };
   }
 
+  const symbol = config.management.autoSwapTargetToken;
   let lastError;
   for (let attempt = 1; attempt <= SWAP_MAX_ATTEMPTS; attempt++) {
     try {
-      const { signature, outAmount, minOutAmount } = await swapToSolOnce(wallet, inputMint, amountRaw);
-      log("swap", `Swapped ${inputMint.slice(0, 8)} → SOL, tx: ${signature}${attempt > 1 ? ` (attempt ${attempt})` : ""}`);
+      const { signature, outAmount, minOutAmount } = await swapToTargetOnce(wallet, inputMint, amountRaw);
+      log("swap", `Swapped ${inputMint.slice(0, 8)} → ${symbol}, tx: ${signature}${attempt > 1 ? ` (attempt ${attempt})` : ""}`);
       return { success: true, signature, outAmount, minOutAmount };
     } catch (err) {
       lastError = err;
-      log("swap_error", `Swap ${inputMint.slice(0, 8)} → SOL failed (attempt ${attempt}/${SWAP_MAX_ATTEMPTS}): ${err.message}`);
+      log("swap_error", `Swap ${inputMint.slice(0, 8)} → ${symbol} failed (attempt ${attempt}/${SWAP_MAX_ATTEMPTS}): ${err.message}`);
       if (attempt < SWAP_MAX_ATTEMPTS) await sleep(SWAP_RETRY_DELAY_MS);
     }
   }
