@@ -463,6 +463,26 @@ test("updatePnlAndCheckExits fires STOP_LOSS once PnL drops to stopLossPct", () 
   assert.equal(result.action, "STOP_LOSS");
 });
 
+test("updatePnlAndCheckExits withholds TAKE_PROFIT when takeProfitEnabled is false, keeping the % configured", () => {
+  ensurePositionTracked("posJB", { in_range: true });
+  const mgmt = {
+    exitGracePeriodSec: -1, takeProfitPct: 10, takeProfitEnabled: false, stopLossPct: -50,
+    trailingTakeProfit: false, dualSideEnabled: false, outOfRangeExitEnabled: false,
+  };
+  const result = updatePnlAndCheckExits("posJB", { ...baseTick, pnl_pct: 12 }, mgmt);
+  assert.equal(result, null);
+});
+
+test("updatePnlAndCheckExits withholds STOP_LOSS when stopLossEnabled is false, keeping the % configured", () => {
+  ensurePositionTracked("posKB", { in_range: true });
+  const mgmt = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -15, stopLossEnabled: false, stopLossRequireOorLeft: false,
+    trailingTakeProfit: false, dualSideEnabled: false, outOfRangeExitEnabled: false,
+  };
+  const result = updatePnlAndCheckExits("posKB", { ...baseTick, pnl_pct: -20 }, mgmt);
+  assert.equal(result, null);
+});
+
 test("updatePnlAndCheckExits withholds STOP_LOSS when stopLossRequireOorLeft is set and price is still in range", () => {
   ensurePositionTracked("posL", { in_range: true });
   const mgmt = {

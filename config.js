@@ -47,7 +47,18 @@ export const config = {
   management: {
     // Optional — null disables the instant take-profit exit until set via the Telegram Settings menu.
     takeProfitPct: u.takeProfitPct == null ? null : Number(u.takeProfitPct),
+    // On/off switch for instant take-profit, separate from the % value
+    // above — toggling this off and back on preserves whatever takeProfitPct
+    // was set, instead of needing to retype it. Defaults to true (matches
+    // pre-existing behavior: TP was "on" whenever a % was set). Toggleable
+    // live via the Telegram Settings menu.
+    takeProfitEnabled: u.takeProfitEnabled == null ? true : !!u.takeProfitEnabled,
     stopLossPct: Number(u.stopLossPct),
+    // On/off switch for instant stop-loss, separate from the % value above —
+    // same reasoning as takeProfitEnabled. Defaults to true (SL was always
+    // on before this option existed). Toggleable live via the Telegram
+    // Settings menu.
+    stopLossEnabled: u.stopLossEnabled == null ? true : !!u.stopLossEnabled,
     // When true, stop loss only fires if the position has also broken out
     // of range to the downside ("OOR kiri"). Off by default (SL fires on
     // PnL alone). Toggleable live via the Telegram Settings menu.

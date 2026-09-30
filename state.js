@@ -794,7 +794,16 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   }
 
   // ── Take profit (instant close, unconditional) ──
-  if (!pnl_pct_suspicious && currentPnlPct != null && mgmtConfig.takeProfitPct != null && currentPnlPct >= mgmtConfig.takeProfitPct) {
+  // takeProfitEnabled gates the check without touching the stored
+  // takeProfitPct value — so turning TP off and back on again preserves
+  // whatever % was configured, instead of forcing it back to null/unset.
+  if (
+    mgmtConfig.takeProfitEnabled !== false &&
+    !pnl_pct_suspicious &&
+    currentPnlPct != null &&
+    mgmtConfig.takeProfitPct != null &&
+    currentPnlPct >= mgmtConfig.takeProfitPct
+  ) {
     return {
       action: "TAKE_PROFIT",
       reason: `Take profit: PnL ${currentPnlPct.toFixed(2)}% >= ${mgmtConfig.takeProfitPct}%`,
@@ -802,10 +811,17 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   }
 
   // ── Stop loss (instant close) ──
-  // Optionally gated on the position having broken out of range to the
-  // downside ("OOR kiri" — active bin fell below lower_bin), so a PnL dip
-  // that's still inside range doesn't get stopped out.
-  if (!pnl_pct_suspicious && currentPnlPct != null && mgmtConfig.stopLossPct != null && currentPnlPct <= mgmtConfig.stopLossPct) {
+  // Same enabled/value split as takeProfitEnabled above. Optionally also
+  // gated on the position having broken out of range to the downside
+  // ("OOR kiri" — active bin fell below lower_bin), so a PnL dip that's
+  // still inside range doesn't get stopped out.
+  if (
+    mgmtConfig.stopLossEnabled !== false &&
+    !pnl_pct_suspicious &&
+    currentPnlPct != null &&
+    mgmtConfig.stopLossPct != null &&
+    currentPnlPct <= mgmtConfig.stopLossPct
+  ) {
     const oorLeftOk = !mgmtConfig.stopLossRequireOorLeft || oor_side === "below";
     if (oorLeftOk) {
       return {

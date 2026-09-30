@@ -241,8 +241,8 @@ function buildSettingsText() {
   const delaySec = config.poll.intervalSec * m.confirmTicks;
   return (
     `⚙️ <b>Setting aktif:</b>\n` +
-    `TP (instant): ${m.takeProfitPct != null ? m.takeProfitPct + "%" : "OFF"}\n` +
-    `SL (instant): ${m.stopLossPct}%${m.stopLossRequireOorLeft ? " (+ OOR kiri)" : ""}\n` +
+    `TP (instant): ${m.takeProfitEnabled ? (m.takeProfitPct != null ? m.takeProfitPct + "%" : "ON (belum ada nilai)") : "OFF"}\n` +
+    `SL (instant): ${m.stopLossEnabled ? `${m.stopLossPct}%${m.stopLossRequireOorLeft ? " (+ OOR kiri)" : ""}` : "OFF"}\n` +
     `Trailing: ${m.trailingTakeProfit ? "ON" : "OFF"} (trigger ${m.trailingTriggerPct}%, drop ${m.trailingDropPct}%, fast-close ≥${(m.trailingDropPct * m.trailingFastDropMultiplier).toFixed(2)}%)\n` +
     `OOR wait: ${m.outOfRangeExitEnabled ? `ON (${m.outOfRangeWaitMinutes}m${m.outOfRangeRequireLeft ? ", kiri only" : ""})` : "OFF"}\n` +
     `Low yield exit: ${m.lowYieldExitEnabled ? `ON (fee/TVL24h &lt; ${m.minFeePerTvl24h}%, min age ${m.minAgeBeforeYieldCheck}m)` : "OFF"}\n` +
@@ -264,9 +264,17 @@ function buildSettingsKeyboard() {
   const m = config.management;
   const rows = [
     [
-      { text: `TP: ${m.takeProfitPct ?? "OFF"}`, callback_data: "edit_tp" },
-      { text: `SL: ${m.stopLossPct}%`, callback_data: "edit_sl" },
+      { text: `TP: ${m.takeProfitEnabled ? "ON" : "OFF"}`, callback_data: "toggle_tp" },
+      { text: `SL: ${m.stopLossEnabled ? "ON" : "OFF"}`, callback_data: "toggle_sl" },
     ],
+  ];
+  if (m.takeProfitEnabled || m.stopLossEnabled) {
+    const tpSlValueRow = [];
+    if (m.takeProfitEnabled) tpSlValueRow.push({ text: `TP: ${m.takeProfitPct ?? "?"}%`, callback_data: "edit_tp" });
+    if (m.stopLossEnabled) tpSlValueRow.push({ text: `SL: ${m.stopLossPct}%`, callback_data: "edit_sl" });
+    rows.push(tpSlValueRow);
+  }
+  rows.push(
     [
       { text: `Trail trigger: ${m.trailingTriggerPct}%`, callback_data: "edit_trigger" },
       { text: `Trail drop: ${m.trailingDropPct}%`, callback_data: "edit_trail" },
@@ -276,7 +284,7 @@ function buildSettingsKeyboard() {
     [{ text: `OOR wait: ${m.outOfRangeExitEnabled ? "ON" : "OFF"}`, callback_data: "toggle_oor_wait" }],
     [{ text: `OOR wait kiri only: ${m.outOfRangeRequireLeft ? "ON" : "OFF"}`, callback_data: "toggle_oor_require_left" }],
     [{ text: `Confirm ticks: ${m.confirmTicks}x`, callback_data: "edit_confirm_ticks" }],
-  ];
+  );
   if (m.outOfRangeExitEnabled) {
     rows.push([{ text: `OOR wait: ${m.outOfRangeWaitMinutes}m`, callback_data: "edit_oor_wait" }]);
   }
@@ -471,6 +479,24 @@ async function handleCallbackQuery(query) {
     log("telegram-bot", `Auto-exit ${pause ? "paused" : "resumed"} via Telegram`);
     await answerCallbackQuery(query.id, pause ? "Auto-exit paused" : "Auto-exit resumed");
     await showPositions(messageId);
+    return;
+  }
+
+  if (data === "toggle_tp") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.takeProfitEnabled;
+    updateManagementSetting("takeProfitEnabled", enabled);
+    log("telegram-bot", `Take profit ${enabled ? "enabled" : "disabled"} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
+  if (data === "toggle_sl") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.stopLossEnabled;
+    updateManagementSetting("stopLossEnabled", enabled);
+    log("telegram-bot", `Stop loss ${enabled ? "enabled" : "disabled"} via Telegram`);
+    await showSettings(messageId);
     return;
   }
 
