@@ -8,6 +8,8 @@
   "trailingTakeProfit": true,
   "trailingTriggerPct": 3.25,
   "trailingDropPct": 0.75,
+  "_comment0h": "trailingFastDropMultiplier: if the drop from peak is at least this many times trailingDropPct, TRAILING_TP fires immediately (skips confirmTicks) instead of waiting for consecutive confirmation — a drop that large during a fast crash isn't the one-tick noise confirmTicks exists to filter, and waiting just lets a fast-moving memecoin fall further before the close executes. Optional, defaults to 3. Toggleable live via the Telegram bot's Settings button.",
+  "trailingFastDropMultiplier": 3,
   "_comment0e": "outOfRangeExitEnabled: on/off switch for the out-of-range exit below. Optional, defaults to true. Toggleable live via the Telegram bot's Settings button.",
   "outOfRangeExitEnabled": true,
   "_comment0f": "outOfRangeRequireLeft: when true, the OOR-wait exit only fires on a sustained break to the downside ('OOR kiri'), not a bullish breakout to the upside. Optional, defaults to false. Toggleable live via the Telegram bot's Settings button.",

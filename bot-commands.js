@@ -42,6 +42,7 @@ const SETTING_LABELS = {
   stopLossPct: "SL (instant close %)",
   trailingTriggerPct: "Trailing trigger %",
   trailingDropPct: "Trailing drop %",
+  trailingFastDropMultiplier: "Trailing fast-close multiplier (x drop%)",
   outOfRangeWaitMinutes: "OOR wait (menit)",
   minFeePerTvl24h: "Min fee/TVL 24h (%)",
   minAgeBeforeYieldCheck: "Min umur posisi sebelum cek yield (menit)",
@@ -242,7 +243,7 @@ function buildSettingsText() {
     `⚙️ <b>Setting aktif:</b>\n` +
     `TP (instant): ${m.takeProfitPct != null ? m.takeProfitPct + "%" : "OFF"}\n` +
     `SL (instant): ${m.stopLossPct}%${m.stopLossRequireOorLeft ? " (+ OOR kiri)" : ""}\n` +
-    `Trailing: ${m.trailingTakeProfit ? "ON" : "OFF"} (trigger ${m.trailingTriggerPct}%, drop ${m.trailingDropPct}%)\n` +
+    `Trailing: ${m.trailingTakeProfit ? "ON" : "OFF"} (trigger ${m.trailingTriggerPct}%, drop ${m.trailingDropPct}%, fast-close ≥${(m.trailingDropPct * m.trailingFastDropMultiplier).toFixed(2)}%)\n` +
     `OOR wait: ${m.outOfRangeExitEnabled ? `ON (${m.outOfRangeWaitMinutes}m${m.outOfRangeRequireLeft ? ", kiri only" : ""})` : "OFF"}\n` +
     `Low yield exit: ${m.lowYieldExitEnabled ? `ON (fee/TVL24h &lt; ${m.minFeePerTvl24h}%, min age ${m.minAgeBeforeYieldCheck}m)` : "OFF"}\n` +
     `Confirm ticks: ${m.confirmTicks}x\n` +
@@ -269,6 +270,7 @@ function buildSettingsKeyboard() {
       { text: `Trail trigger: ${m.trailingTriggerPct}%`, callback_data: "edit_trigger" },
       { text: `Trail drop: ${m.trailingDropPct}%`, callback_data: "edit_trail" },
     ],
+    [{ text: `Trail fast-close multiplier: ${m.trailingFastDropMultiplier}x`, callback_data: "edit_trail_fast_multiplier" }],
     [{ text: `SL + OOR kiri: ${m.stopLossRequireOorLeft ? "ON" : "OFF"}`, callback_data: "toggle_sl_oor_left" }],
     [{ text: `OOR wait: ${m.outOfRangeExitEnabled ? "ON" : "OFF"}`, callback_data: "toggle_oor_wait" }],
     [{ text: `OOR wait kiri only: ${m.outOfRangeRequireLeft ? "ON" : "OFF"}`, callback_data: "toggle_oor_require_left" }],
@@ -356,6 +358,7 @@ async function handleMessage(msg) {
     if (key === "minAgeBeforeYieldCheck" || key === "outOfRangeWaitMinutes") value = Math.max(0, Math.round(value));
     if (key === "rangeEarlyWarningPct" || key === "rangeCriticalWarningPct" || key === "binYieldGuardBinPct") value = Math.max(0, Math.min(100, value));
     if (key === "binYieldGuardMinFeePerTvl24h") value = Math.max(0, value);
+    if (key === "trailingFastDropMultiplier") value = Math.max(1, value);
     awaitingSetting = null;
     updateManagementSetting(key, value);
     log("telegram-bot", `Setting ${key} updated to ${value} via Telegram`);
@@ -590,6 +593,7 @@ async function handleCallbackQuery(query) {
       edit_sl: "stopLossPct",
       edit_trigger: "trailingTriggerPct",
       edit_trail: "trailingDropPct",
+      edit_trail_fast_multiplier: "trailingFastDropMultiplier",
       edit_oor_wait: "outOfRangeWaitMinutes",
       edit_min_fee_tvl: "minFeePerTvl24h",
       edit_min_age_yield: "minAgeBeforeYieldCheck",

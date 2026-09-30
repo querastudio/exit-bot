@@ -132,7 +132,9 @@ async function tick() {
       }
 
       const exit = updatePnlAndCheckExits(p.position, p, config.management);
-      const { fire, action } = registerExitSignal(p.position, exit?.action ?? null, config.management.confirmTicks);
+      const { fire, action } = registerExitSignal(p.position, exit?.action ?? null, config.management.confirmTicks, {
+        immediate: exit?.immediate === true,
+      });
 
       if (fire) {
         if (config.management.paused) {

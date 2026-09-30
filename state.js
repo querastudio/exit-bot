@@ -203,9 +203,15 @@ export function confirmPeak(position_address, candidatePnlPct, confirmTicks = 2)
 
 /**
  * Consecutive-tick confirmation for an exit signal. Fires only after
- * `confirmTicks` consecutive polls report the SAME action.
+ * `confirmTicks` consecutive polls report the SAME action — unless
+ * `immediate` is set, which fires on the very first tick instead. Used for
+ * a signal that's already unambiguous on its own (see the TRAILING_TP fast
+ * path in updatePnlAndCheckExits: a drop far larger than the configured
+ * trailingDropPct isn't the kind of one-tick noise confirmTicks exists to
+ * filter out, and waiting confirmTicks polls to confirm it just gives a
+ * fast-moving price more time to fall further before the close executes).
  */
-export function registerExitSignal(position_address, signal, confirmTicks = 2) {
+export function registerExitSignal(position_address, signal, confirmTicks = 2, { immediate = false } = {}) {
   const state = load();
   const pos = state.positions[position_address];
   if (!pos || pos.closed) return { fire: false, action: null, count: 0 };
@@ -217,6 +223,14 @@ export function registerExitSignal(position_address, signal, confirmTicks = 2) {
       save(state);
     }
     return { fire: false, action: null, count: 0 };
+  }
+
+  if (immediate) {
+    pos.pending_exit_action = null;
+    pos.pending_exit_count = 0;
+    save(state);
+    log("state", `Position ${position_address.slice(0, 8)} exit signal "${signal}" fired immediately (large enough to skip confirmTicks)`);
+    return { fire: true, action: signal, count: 1 };
   }
 
   if (pos.pending_exit_action === signal) {
@@ -813,9 +827,19 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   ) {
     const dropFromPeak = pos.peak_pnl_pct - currentPnlPct;
     if (dropFromPeak >= mgmtConfig.trailingDropPct) {
+      // Fast path: a drop this much larger than the configured trailingDropPct
+      // is an unambiguous, fast-moving crash, not the kind of one-tick noise
+      // confirmTicks exists to filter out — waiting confirmTicks polls to
+      // confirm it just lets the price fall further before the close executes.
+      // Skip the confirmation delay and fire on this tick instead.
+      const fastMultiplier = mgmtConfig.trailingFastDropMultiplier ?? 3;
+      const immediate = dropFromPeak >= mgmtConfig.trailingDropPct * fastMultiplier;
       return {
         action: "TRAILING_TP",
-        reason: `Trailing TP: peak ${pos.peak_pnl_pct.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${dropFromPeak.toFixed(2)}% >= ${mgmtConfig.trailingDropPct}%)`,
+        reason:
+          `Trailing TP: peak ${pos.peak_pnl_pct.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${dropFromPeak.toFixed(2)}% >= ${mgmtConfig.trailingDropPct}%)` +
+          (immediate ? " — large drop, closing immediately" : ""),
+        immediate,
       };
     }
   }

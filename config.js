@@ -55,6 +55,14 @@ export const config = {
     trailingTakeProfit: !!u.trailingTakeProfit,
     trailingTriggerPct: Number(u.trailingTriggerPct),
     trailingDropPct: Number(u.trailingDropPct),
+    // Fast path: if the drop from peak is at least this many times
+    // trailingDropPct, TRAILING_TP fires on the very next tick instead of
+    // waiting confirmTicks consecutive polls — a drop that large is an
+    // unambiguous fast-moving crash, not the one-tick noise confirmTicks is
+    // meant to filter, and waiting just lets the price fall further before
+    // the close executes. Optional, defaults to 3. Toggleable live via the
+    // Telegram bot's Settings button.
+    trailingFastDropMultiplier: Number(u.trailingFastDropMultiplier ?? 3),
     // On/off switch for the out-of-range exit below — defaults to true so
     // existing installs (where this exit has always been active) keep
     // behaving the same after upgrade. Toggleable live via Telegram Settings.

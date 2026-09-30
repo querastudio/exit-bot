@@ -111,6 +111,24 @@ test("registerExitSignal restarts the streak when the signal clears or changes",
   assert.equal(r.count, 1);
 });
 
+test("registerExitSignal with { immediate: true } fires on the first tick, bypassing confirmTicks", () => {
+  ensurePositionTracked("posEB", {});
+  const r = registerExitSignal("posEB", "TRAILING_TP", 3, { immediate: true });
+  assert.equal(r.fire, true);
+  assert.equal(r.action, "TRAILING_TP");
+  assert.equal(r.count, 1);
+});
+
+test("registerExitSignal immediate mode clears any in-progress confirmation streak", () => {
+  ensurePositionTracked("posEC", {});
+  registerExitSignal("posEC", "TRAILING_TP", 5); // starts a streak, count 1 of 5
+  const r = registerExitSignal("posEC", "TRAILING_TP", 5, { immediate: true });
+  assert.equal(r.fire, true);
+  // A subsequent non-immediate call should start a fresh streak, not resume the old one.
+  const after = registerExitSignal("posEC", "TRAILING_TP", 5);
+  assert.equal(after.count, 1);
+});
+
 // ── detectTopup ──
 
 test("detectTopup flags a deposit jump above the threshold as a top-up", () => {
@@ -467,6 +485,24 @@ test("updatePnlAndCheckExits fires TRAILING_TP after peak is confirmed and price
   assert.equal(result, null); // trailing just activated, only 1pp off peak — not enough to fire
   result = updatePnlAndCheckExits("posM", { ...baseTick, pnl_pct: 16 }, mgmt);
   assert.equal(result.action, "TRAILING_TP"); // 4pp off peak >= 3pp drop
+  // 4pp is a modest overshoot past the 3pp threshold, well under the default
+  // fast-path multiplier (3x -> 9pp) — should still wait for confirmTicks.
+  assert.notEqual(result.immediate, true);
+});
+
+test("updatePnlAndCheckExits marks TRAILING_TP immediate when the drop is far larger than trailingDropPct", () => {
+  ensurePositionTracked("posMB", { in_range: true });
+  confirmPeak("posMB", 20, 1); // peak=20
+  const mgmt = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -50,
+    trailingTakeProfit: true, trailingTriggerPct: 8, trailingDropPct: 3, trailingFastDropMultiplier: 3,
+    dualSideEnabled: false, outOfRangeExitEnabled: false,
+  };
+  updatePnlAndCheckExits("posMB", { ...baseTick, pnl_pct: 19 }, mgmt); // activates trailing
+  // Crashes hard: 20 - (-1) = 21pp off peak, way past 3pp * 3 = 9pp fast-path threshold.
+  const result = updatePnlAndCheckExits("posMB", { ...baseTick, pnl_pct: -1 }, mgmt);
+  assert.equal(result.action, "TRAILING_TP");
+  assert.equal(result.immediate, true);
 });
 
 test("updatePnlAndCheckExits fires OUT_OF_RANGE after the configured wait once out of range", () => {
