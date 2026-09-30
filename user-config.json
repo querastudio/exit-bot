@@ -19,7 +19,7 @@
   "lowYieldExitEnabled": true,
   "minFeePerTvl24h": 1,
   "minAgeBeforeYieldCheck": 480,
-  "solMode": true,
+  "solMode": false,
 
   "_comment0c": "Strategi Dual Side: exit rules khusus posisi dual-sided (liquidity di token X & Y sekaligus), terpisah dari TP/SL biasa di atas. dualSideStopLossMode: 'pnl_and_oor' (SL butuh PnL tembus SL% DAN oor kiri), 'oor_only' (SL langsung fire begitu oor kiri, PnL diabaikan), 'pnl_only' (SL fire dari PnL aja, oor diabaikan). Optional block, all default to off/null. Toggleable live via the Telegram bot's Settings button.",
   "dualSideEnabled": false,
