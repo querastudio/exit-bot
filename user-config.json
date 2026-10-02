@@ -11,7 +11,7 @@
   "trailingTriggerPct": 4.25,
   "trailingDropPct": 0.75,
   "_comment0h": "trailingFastDropMultiplier: if the drop from peak is at least this many times trailingDropPct, TRAILING_TP fires immediately (skips confirmTicks) instead of waiting for consecutive confirmation — a drop that large during a fast crash isn't the one-tick noise confirmTicks exists to filter, and waiting just lets a fast-moving memecoin fall further before the close executes. Optional, defaults to 3. Toggleable live via the Telegram bot's Settings button.",
-  "trailingFastDropMultiplier": 3,
+  "trailingFastDropMultiplier": 2,
   "_comment0e": "outOfRangeExitEnabled: on/off switch for the out-of-range exit below. Optional, defaults to true. Toggleable live via the Telegram bot's Settings button.",
   "outOfRangeExitEnabled": true,
   "_comment0f": "outOfRangeRequireLeft: when true, the OOR-wait exit only fires on a sustained break to the downside ('OOR kiri'), not a bullish breakout to the upside. Optional, defaults to false. Toggleable live via the Telegram bot's Settings button.",
@@ -45,12 +45,12 @@
 
   "_comment2": "Operational parameters — have sane defaults, override if you want.",
   "pollIntervalSec": 3,
-  "confirmTicks": 3,
+  "confirmTicks": 2,
   "swapSlippageBps": 500,
   "autoSwapAfterClose": true,
 
   "_comment4": "Jito anti-MEV: uses Jito's official DontFront technique (solana.com/docs/defi/mev-protection) — a marker account added to the transaction so the Jito block engine guarantees no other tx can be placed ahead of it, sent via sendTransaction (not sendBundle, which failed 9/9 in earlier testing). Optionally still attaches a tip for faster landing. Only affects close transactions, not the post-close auto-swap. Toggleable live via the Telegram bot's Settings button.",
-  "jitoEnabled": false,
+  "jitoEnabled": true,
   "jitoTipLamports": 200000,
 
   "_comment5": "Range-consumed alerts: informational only (never closes a position) — notifies when a single-sided position's active bin has moved this % of the way through its range toward the far edge, i.e. how much SOL looks converted into the base token so far. Computed from bin data already fetched every tick, no extra RPC calls. Optional, default on. Toggleable live via the Telegram bot's Settings button.",
@@ -62,7 +62,7 @@
   "_comment6": "Bin yield guard: flags a position that's consumed a lot of its range (binYieldGuardBinPct) without earning fees to show for it (fee/TVL24h below binYieldGuardMinFeePerTvl24h) — sign the deposit may be heading into a low-liquidity/rug-risk zone rather than a healthy range walk. binYieldGuardAction 'notify' (default) sends a Telegram alert only; 'close' wires it into the normal exit pipeline (still confirmTicks-gated) to auto-close instead. Toggleable live via the Telegram bot's Settings button.",
   "binYieldGuardEnabled": true,
   "binYieldGuardBinPct": 50,
-  "binYieldGuardMinFeePerTvl24h": 10,
+  "binYieldGuardMinFeePerTvl24h": 20,
   "binYieldGuardAction": "close",
 
   "_comment7": "autoSwapTargetToken: which currency the post-close auto-swap converts leftover base token into ('SOL' or 'USDC'). Independent of solMode (which only affects how PnL/values are *reported* in Telegram) — this controls what Jupiter actually swaps to on-chain. Toggleable live via the Telegram bot's Settings button.",
