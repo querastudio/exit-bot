@@ -682,21 +682,41 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   // when dual side is enabled — skip arming the regular trailing so it
   // can't race the dual-side one and fire TRAILING_TP instead of
   // DUAL_SIDE_TRAILING_TP.
-  // Re-evaluated against the CURRENT trigger every tick, not latched: the peak
-  // only ever rises, so this is identical to a latch while the setting is
-  // stable — but a latch kept a position armed under an old, lower trigger
-  // after the trigger was raised (a position that peaked at 3.59% still
-  // trailed and closed with the trigger set to 4.25%).
+  // Armed state follows the CURRENT trigger every tick (not latched), with one
+  // rule that matters more than the rest: a position only ARMS while it is
+  // still within the allowed give-back (trailingDropPct) of its peak.
+  //
+  // In normal operation arming happens on the very tick the peak crosses the
+  // trigger, when current PnL == peak, so that rule never blocks it. What it
+  // blocks is retroactive arming: peak 3.59% recorded under a 4.25% trigger
+  // (so not armed), PnL then falls to -2.5%, the trigger is lowered to 3.25%
+  // — and the old peak instantly qualified, "arming" a trailing TP on a
+  // position already 6pp under its peak, which then closed it at a loss
+  // 2 seconds after the setting change. A take-profit must not be able to
+  // turn a settings edit into a forced loss exit.
   if (mgmtConfig.trailingTakeProfit && !(mgmtConfig.dualSideEnabled && isDualSideAtOpen)) {
-    const shouldBeActive = (pos.peak_pnl_pct ?? 0) >= mgmtConfig.trailingTriggerPct;
-    if (shouldBeActive && !pos.trailing_active) {
-      pos.trailing_active = true;
-      changed = true;
-      log("state", `Position ${position_address.slice(0, 8)} trailing TP activated (peak: ${pos.peak_pnl_pct}%, trigger: ${mgmtConfig.trailingTriggerPct}%)`);
-    } else if (!shouldBeActive && pos.trailing_active) {
+    const peak = pos.peak_pnl_pct ?? 0;
+    const eligible = peak >= mgmtConfig.trailingTriggerPct;
+    if (pos.trailing_active && !eligible) {
       pos.trailing_active = false;
       changed = true;
-      log("state", `Position ${position_address.slice(0, 8)} trailing TP disarmed (peak ${pos.peak_pnl_pct}% is below the current trigger ${mgmtConfig.trailingTriggerPct}%)`);
+      log("state", `Position ${position_address.slice(0, 8)} trailing TP disarmed (peak ${peak}% is below the current trigger ${mgmtConfig.trailingTriggerPct}%)`);
+    } else if (!pos.trailing_active && eligible) {
+      const withinGiveBack = currentPnlPct != null && peak - currentPnlPct < mgmtConfig.trailingDropPct;
+      if (withinGiveBack) {
+        pos.trailing_active = true;
+        pos.trailing_arm_skipped = false;
+        changed = true;
+        log("state", `Position ${position_address.slice(0, 8)} trailing TP activated (peak: ${peak}%, trigger: ${mgmtConfig.trailingTriggerPct}%)`);
+      } else if (!pos.trailing_arm_skipped) {
+        pos.trailing_arm_skipped = true;
+        changed = true;
+        log(
+          "state",
+          `Position ${position_address.slice(0, 8)} trailing TP NOT armed: peak ${peak}% qualifies for trigger ${mgmtConfig.trailingTriggerPct}% but current PnL ` +
+          `${currentPnlPct != null ? currentPnlPct.toFixed(2) + "%" : "?"} is already more than ${mgmtConfig.trailingDropPct}% below it — arming now would only force-close a position that already fell`,
+        );
+      }
     }
   }
 

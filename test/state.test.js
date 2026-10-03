@@ -525,6 +525,26 @@ test("updatePnlAndCheckExits marks TRAILING_TP immediate when the drop is far la
   assert.equal(result.immediate, true);
 });
 
+test("lowering the trigger below a stale peak does NOT retroactively arm trailing TP on a position that already fell (SAPLING incident)", () => {
+  ensurePositionTracked("posSAP", { in_range: true });
+  confirmPeak("posSAP", 3.59, 1); // real peak 3.59%, recorded while the trigger was 4.25 (never armed)
+  const base = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -25,
+    trailingTakeProfit: true, trailingDropPct: 0.75, trailingFastDropMultiplier: 2,
+    dualSideEnabled: false, outOfRangeExitEnabled: false,
+  };
+  // Price falls to -2.5% while trigger 4.25 > peak: not armed, nothing fires.
+  assert.equal(updatePnlAndCheckExits("posSAP", { ...baseTick, pnl_pct: -2.5 }, { ...base, trailingTriggerPct: 4.25 }), null);
+  // Trigger lowered to 3.25: the old peak now qualifies, but the position is 6pp under it.
+  // Previously this armed instantly and fast-closed at -2.5% two seconds after the edit.
+  assert.equal(updatePnlAndCheckExits("posSAP", { ...baseTick, pnl_pct: -2.5 }, { ...base, trailingTriggerPct: 3.25 }), null);
+  assert.equal(getTrackedPosition("posSAP").trailing_active, false);
+  // If it genuinely recovers back near the old peak, it arms (and protects from there).
+  assert.equal(updatePnlAndCheckExits("posSAP", { ...baseTick, pnl_pct: 3.5 }, { ...base, trailingTriggerPct: 3.25 }), null);
+  assert.equal(getTrackedPosition("posSAP").trailing_active, true);
+  assert.equal(updatePnlAndCheckExits("posSAP", { ...baseTick, pnl_pct: 1.5 }, { ...base, trailingTriggerPct: 3.25 }).action, "TRAILING_TP");
+});
+
 test("trailing TP is not latched: raising the trigger above the peak disarms an already-armed position", () => {
   ensurePositionTracked("posTL", { in_range: true });
   confirmPeak("posTL", 3.6, 1); // peak 3.6
