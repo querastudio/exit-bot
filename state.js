@@ -10,7 +10,9 @@ import { log } from "./logger.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Overridable so tests can point at a throwaway file instead of the real
 // state.json — production behavior (no env var set) is unchanged.
-const STATE_FILE = process.env.EXIT_BOT_STATE_FILE || path.join(__dirname, "state.json");
+const STATE_FILE =
+  process.env.EXIT_BOT_STATE_FILE ||
+  path.join(process.env.EXIT_BOT_DATA_DIR || __dirname, "state.json");
 const STATE_BACKUP_FILE = STATE_FILE + ".bak";
 
 function emptyState() {

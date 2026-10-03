@@ -6,7 +6,20 @@ import dotenv from "dotenv";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, ".env") });
 
-const USER_CONFIG_PATH = path.join(__dirname, "user-config.json");
+const BUNDLED_USER_CONFIG_PATH = path.join(__dirname, "user-config.json");
+
+// EXIT_BOT_DATA_DIR (e.g. a Railway Volume mount like /data) makes user-config.json
+// persistent across deploys: the live copy lives there, seeded once from the
+// git-tracked user-config.json. Unset = old behaviour (file next to the code).
+const DATA_DIR = process.env.EXIT_BOT_DATA_DIR || null;
+const USER_CONFIG_PATH = DATA_DIR ? path.join(DATA_DIR, "user-config.json") : BUNDLED_USER_CONFIG_PATH;
+if (DATA_DIR) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(USER_CONFIG_PATH) && fs.existsSync(BUNDLED_USER_CONFIG_PATH)) {
+    fs.copyFileSync(BUNDLED_USER_CONFIG_PATH, USER_CONFIG_PATH);
+    console.log(`[config] Seeded ${USER_CONFIG_PATH} from bundled user-config.json`);
+  }
+}
 
 function readJsonIfExists(filePath) {
   return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, "utf8")) : {};
