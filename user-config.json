@@ -17,6 +17,8 @@
   "_comment0f": "outOfRangeRequireLeft: when true, the OOR-wait exit only fires on a sustained break to the downside ('OOR kiri'), not a bullish breakout to the upside. Optional, defaults to false. Toggleable live via the Telegram bot's Settings button.",
   "outOfRangeRequireLeft": true,
   "outOfRangeWaitMinutes": 2,
+  "oorRightProfitExitEnabled": false,
+  "oorRightMinProfitPct": 0.5,
   "_comment0g": "lowYieldExitEnabled: on/off switch for the low-yield exit below. Optional, defaults to true. Toggleable live via the Telegram bot's Settings button.",
   "lowYieldExitEnabled": true,
   "minFeePerTvl24h": 1,

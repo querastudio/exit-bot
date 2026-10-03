@@ -44,6 +44,7 @@ const SETTING_LABELS = {
   trailingDropPct: "Trailing drop %",
   trailingFastDropMultiplier: "Trailing fast-close multiplier (x drop%)",
   outOfRangeWaitMinutes: "OOR wait (menit)",
+  oorRightMinProfitPct: "OOR kanan: min profit (%)",
   minFeePerTvl24h: "Min fee/TVL 24h (%)",
   minAgeBeforeYieldCheck: "Min umur posisi sebelum cek yield (menit)",
   jitoTipLamports: "Jito tip (lamports)",
@@ -247,6 +248,7 @@ function buildSettingsText() {
     `SL (instant): ${m.stopLossEnabled ? `${m.stopLossPct}%${m.stopLossRequireOorLeft ? " (+ OOR kiri)" : ""}` : "OFF"}\n` +
     `Trailing: ${m.trailingTakeProfit ? "ON" : "OFF"} (trigger ${m.trailingTriggerPct}%, drop ${m.trailingDropPct}%, fast-close ≥${(m.trailingDropPct * m.trailingFastDropMultiplier).toFixed(2)}%)\n` +
     `OOR wait: ${m.outOfRangeExitEnabled ? `ON (${m.outOfRangeWaitMinutes}m${m.outOfRangeRequireLeft ? ", kiri only" : ""})` : "OFF"}\n` +
+    `OOR kanan + profit: ${m.oorRightProfitExitEnabled ? `ON (profit ≥${m.oorRightMinProfitPct}%, hanya posisi yang pernah in range)` : "OFF"}\n` +
     `Low yield exit: ${m.lowYieldExitEnabled ? `ON (fee/TVL24h &lt; ${m.minFeePerTvl24h}%, min age ${m.minAgeBeforeYieldCheck}m)` : "OFF"}\n` +
     `Confirm ticks: ${m.confirmTicks}x\n` +
     `<i>Bot ngecek PnL tiap ${config.poll.intervalSec} detik. Sinyal close (TP/SL/trailing/dll) baru beneran dieksekusi kalau kondisinya masih sama selama ${m.confirmTicks}x cek berturut-turut (≈${delaySec} detik), bukan langsung di cek pertama — biar bot gak salah tembak gara-gara harga sempat lonjak/anjlok sesaat doang.</i>\n\n` +
@@ -290,6 +292,10 @@ function buildSettingsKeyboard() {
   );
   if (m.outOfRangeExitEnabled) {
     rows.push([{ text: `OOR wait: ${m.outOfRangeWaitMinutes}m`, callback_data: "edit_oor_wait" }]);
+  }
+  rows.push([{ text: `OOR kanan + profit: ${m.oorRightProfitExitEnabled ? "ON" : "OFF"}`, callback_data: "toggle_oor_right_profit" }]);
+  if (m.oorRightProfitExitEnabled) {
+    rows.push([{ text: `OOR kanan min profit: ${m.oorRightMinProfitPct}%`, callback_data: "edit_oor_right_min_profit" }]);
   }
   rows.push([{ text: `Low yield exit: ${m.lowYieldExitEnabled ? "ON" : "OFF"}`, callback_data: "toggle_low_yield" }]);
   if (m.lowYieldExitEnabled) {
@@ -372,6 +378,7 @@ async function handleMessage(msg) {
     if (key === "minAgeBeforeYieldCheck" || key === "outOfRangeWaitMinutes") value = Math.max(0, Math.round(value));
     if (key === "rangeEarlyWarningPct" || key === "rangeCriticalWarningPct" || key === "binYieldGuardBinPct") value = Math.max(0, Math.min(100, value));
     if (key === "binYieldGuardMinFeePerTvl24h") value = Math.max(0, value);
+    if (key === "oorRightMinProfitPct") value = Math.max(0, value);
     if (key === "trailingFastDropMultiplier") value = Math.max(1, value);
     awaitingSetting = null;
     updateManagementSetting(key, value);
@@ -531,6 +538,15 @@ async function handleCallbackQuery(query) {
     return;
   }
 
+  if (data === "toggle_oor_right_profit") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.oorRightProfitExitEnabled;
+    updateManagementSetting("oorRightProfitExitEnabled", enabled);
+    log("telegram-bot", `OOR kanan + profit exit ${enabled ? "enabled" : "disabled"} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
   if (data === "toggle_oor_require_left") {
     await answerCallbackQuery(query.id);
     const enabled = !config.management.outOfRangeRequireLeft;
@@ -645,6 +661,7 @@ async function handleCallbackQuery(query) {
       edit_trail: "trailingDropPct",
       edit_trail_fast_multiplier: "trailingFastDropMultiplier",
       edit_oor_wait: "outOfRangeWaitMinutes",
+      edit_oor_right_min_profit: "oorRightMinProfitPct",
       edit_min_fee_tvl: "minFeePerTvl24h",
       edit_min_age_yield: "minAgeBeforeYieldCheck",
       edit_dual_tp: "dualSideTakeProfitPct",

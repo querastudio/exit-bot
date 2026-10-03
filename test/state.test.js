@@ -683,3 +683,46 @@ test("load() starts fresh (no throw) when both state.json and its backup are cor
   const pos = getTrackedPosition("anything");
   assert.equal(pos, null);
 });
+
+const oorRightMgmt = {
+  exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -50, trailingTakeProfit: false,
+  dualSideEnabled: false, outOfRangeExitEnabled: true, outOfRangeRequireLeft: true, outOfRangeWaitMinutes: 0,
+  oorRightProfitExitEnabled: true, oorRightMinProfitPct: 0.5,
+};
+
+test("OOR kanan + profit does NOT close a net that was opened above range and never in range", () => {
+  ensurePositionTracked("posR1", { in_range: false, oor_side: "above" });
+  const result = updatePnlAndCheckExits("posR1", { ...baseTick, pnl_pct: 3, in_range: false, oor_side: "above" }, oorRightMgmt);
+  assert.equal(result, null);
+  assert.equal(getTrackedPosition("posR1").ever_in_range, false);
+});
+
+test("OOR kanan + profit closes a position that was in range and rebounded above it with profit", () => {
+  ensurePositionTracked("posR2", { in_range: true });
+  updatePnlAndCheckExits("posR2", { ...baseTick, pnl_pct: 0, in_range: true, oor_side: null }, oorRightMgmt);
+  const result = updatePnlAndCheckExits("posR2", { ...baseTick, pnl_pct: 1.2, in_range: false, oor_side: "above" }, oorRightMgmt);
+  assert.equal(result.action, "OOR_RIGHT_PROFIT");
+});
+
+test("a net that gets touched (in range) and then goes OOR kanan with profit is closed", () => {
+  ensurePositionTracked("posR3", { in_range: false, oor_side: "above" });
+  updatePnlAndCheckExits("posR3", { ...baseTick, pnl_pct: 0, in_range: true, oor_side: null }, oorRightMgmt);
+  assert.equal(getTrackedPosition("posR3").ever_in_range, true);
+  const result = updatePnlAndCheckExits("posR3", { ...baseTick, pnl_pct: 0.8, in_range: false, oor_side: "above" }, oorRightMgmt);
+  assert.equal(result.action, "OOR_RIGHT_PROFIT");
+});
+
+test("OOR kanan + profit does not fire below the minimum profit", () => {
+  ensurePositionTracked("posR4", { in_range: true });
+  const result = updatePnlAndCheckExits("posR4", { ...baseTick, pnl_pct: 0.2, in_range: false, oor_side: "above" }, oorRightMgmt);
+  assert.equal(result, null);
+});
+
+test("OOR kanan + profit does nothing when switched off, and does not affect OOR kiri", () => {
+  ensurePositionTracked("posR5", { in_range: true });
+  const off = { ...oorRightMgmt, oorRightProfitExitEnabled: false };
+  assert.equal(updatePnlAndCheckExits("posR5", { ...baseTick, pnl_pct: 5, in_range: false, oor_side: "above" }, off), null);
+  ensurePositionTracked("posR6", { in_range: true });
+  const left = updatePnlAndCheckExits("posR6", { ...baseTick, pnl_pct: -3, in_range: false, oor_side: "below" }, oorRightMgmt);
+  assert.equal(left.action, "OUT_OF_RANGE");
+});

@@ -135,6 +135,12 @@ export function ensurePositionTracked(position_address, positionData) {
     // breakout only, without a bullish breakout's elapsed time counting
     // toward it (see updatePnlAndCheckExits).
     oor_left_since: positionData.oor_side === "below" ? new Date().toISOString() : null,
+    // Whether the active bin has ever been inside this position's range.
+    // Gates the "OOR kanan + profit" exit: a net deliberately placed far below
+    // price starts out OOR kanan without ever being touched, and must NOT be
+    // closed — only a position that was entered and then rebounded past the top.
+    ever_in_range: positionData.in_range === true,
+    oor_right_since: null,
     closed: false,
     closed_at: null,
     peak_pnl_pct: 0,
@@ -755,6 +761,21 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     changed = true;
   }
 
+  if (in_range === true && !pos.ever_in_range) {
+    pos.ever_in_range = true;
+    changed = true;
+  }
+
+  // Timer for "OOR kanan" (price broke above range), only counted once the
+  // position has actually been in range before — see ever_in_range.
+  if (oor_side === "above" && pos.ever_in_range && !pos.oor_right_since) {
+    pos.oor_right_since = new Date().toISOString();
+    changed = true;
+  } else if ((oor_side !== "above" || !pos.ever_in_range) && pos.oor_right_since) {
+    pos.oor_right_since = null;
+    changed = true;
+  }
+
   if (changed) save(state);
 
   // ── Grace period after deploy ──
@@ -893,6 +914,30 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
           `Trailing TP: peak ${pos.peak_pnl_pct.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${dropFromPeak.toFixed(2)}% >= ${mgmtConfig.trailingDropPct}%)` +
           (immediate ? " — large drop, closing immediately" : ""),
         immediate,
+      };
+    }
+  }
+
+  // ── OOR kanan + profit ──
+  // Price rebounded past the top of a range it had previously entered: the
+  // position is back to (mostly) quote token and earns nothing, so with a
+  // profit in hand, close and free the capital. Never fires for a position
+  // that has not been in range yet (a net placed below price).
+  if (
+    mgmtConfig.oorRightProfitExitEnabled &&
+    pos.ever_in_range &&
+    pos.oor_right_since &&
+    !pnl_pct_suspicious &&
+    currentPnlPct != null &&
+    currentPnlPct >= (mgmtConfig.oorRightMinProfitPct ?? 0.5)
+  ) {
+    const minutesRight = Math.floor((Date.now() - new Date(pos.oor_right_since).getTime()) / 60000);
+    if (minutesRight >= (mgmtConfig.outOfRangeWaitMinutes ?? 2)) {
+      return {
+        action: "OOR_RIGHT_PROFIT",
+        reason:
+          `OOR kanan for ${minutesRight}m with profit ${currentPnlPct}% ` +
+          `(min ${mgmtConfig.oorRightMinProfitPct ?? 0.5}%)`,
       };
     }
   }

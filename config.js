@@ -98,6 +98,13 @@ export const config = {
     // existed). Toggleable live via the Telegram Settings menu.
     outOfRangeRequireLeft: !!u.outOfRangeRequireLeft,
     outOfRangeWaitMinutes: Number(u.outOfRangeWaitMinutes),
+    // "OOR kanan + profit": close (and swap to the target token) when price
+    // has rebounded above the range of a position that was previously in
+    // range, and PnL >= oorRightMinProfitPct. Never touches positions that
+    // have not been in range yet. Off by default. Waits outOfRangeWaitMinutes.
+    // Toggleable live via the Telegram Settings menu.
+    oorRightProfitExitEnabled: !!u.oorRightProfitExitEnabled,
+    oorRightMinProfitPct: Number(u.oorRightMinProfitPct ?? 0.5),
     // On/off switch for the low-yield exit below — defaults to true so
     // existing installs (where this exit has always been active) keep
     // behaving the same after upgrade. Toggleable live via Telegram Settings.
