@@ -525,6 +525,35 @@ test("updatePnlAndCheckExits marks TRAILING_TP immediate when the drop is far la
   assert.equal(result.immediate, true);
 });
 
+test("trailing TP is not latched: raising the trigger above the peak disarms an already-armed position", () => {
+  ensurePositionTracked("posTL", { in_range: true });
+  confirmPeak("posTL", 3.6, 1); // peak 3.6
+  const base = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -50,
+    trailingTakeProfit: true, trailingDropPct: 0.75, dualSideEnabled: false, outOfRangeExitEnabled: false,
+  };
+  // Armed under a trigger of 3.25 (peak 3.6 >= 3.25); a small slip is not enough to fire.
+  assert.equal(updatePnlAndCheckExits("posTL", { ...baseTick, pnl_pct: 3.4 }, { ...base, trailingTriggerPct: 3.25 }), null);
+  assert.equal(getTrackedPosition("posTL").trailing_active, true);
+  // Trigger raised to 4.25: peak 3.6 no longer qualifies, so a real drop must NOT close it as TRAILING_TP.
+  const result = updatePnlAndCheckExits("posTL", { ...baseTick, pnl_pct: -2 }, { ...base, trailingTriggerPct: 4.25 });
+  assert.equal(result, null);
+  assert.equal(getTrackedPosition("posTL").trailing_active, false);
+});
+
+test("an already-armed position does not fire TRAILING_TP once trailingTakeProfit is switched off", () => {
+  ensurePositionTracked("posTO", { in_range: true });
+  confirmPeak("posTO", 10, 1);
+  const on = {
+    exitGracePeriodSec: -1, takeProfitPct: null, stopLossPct: -50,
+    trailingTakeProfit: true, trailingTriggerPct: 5, trailingDropPct: 1, dualSideEnabled: false, outOfRangeExitEnabled: false,
+  };
+  updatePnlAndCheckExits("posTO", { ...baseTick, pnl_pct: 9.9 }, on); // arms
+  assert.equal(getTrackedPosition("posTO").trailing_active, true);
+  const result = updatePnlAndCheckExits("posTO", { ...baseTick, pnl_pct: 2 }, { ...on, trailingTakeProfit: false });
+  assert.equal(result, null);
+});
+
 test("updatePnlAndCheckExits fires OUT_OF_RANGE after the configured wait once out of range", () => {
   ensurePositionTracked("posN", { in_range: false });
   const mgmt = {

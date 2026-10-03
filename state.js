@@ -164,7 +164,7 @@ export function ensurePositionTracked(position_address, positionData) {
  * Raise the confirmed peak PnL only after `confirmTicks` consecutive polls
  * where the candidate stays above the current peak.
  */
-export function confirmPeak(position_address, candidatePnlPct, confirmTicks = 2) {
+export function confirmPeak(position_address, candidatePnlPct, confirmTicks = 2, meta = {}) {
   if (candidatePnlPct == null) return false;
   const state = load();
   const pos = state.positions[position_address];
@@ -193,7 +193,12 @@ export function confirmPeak(position_address, candidatePnlPct, confirmTicks = 2)
     pos.pending_peak_pnl_pct = null;
     pos.pending_peak_confirm_count = 0;
     save(state);
-    log("state", `Position ${position_address.slice(0, 8)} peak PnL confirmed at ${pos.peak_pnl_pct.toFixed(2)}%`);
+    // meta (basis + both raw readings) is diagnostic only: it lets a surprising
+    // peak be checked against the other currency's reading at the same moment.
+    const metaText = meta.basis
+      ? ` [basis=${meta.basis} usd=${meta.pnlUsd ?? "?"}% sol=${meta.pnlSol ?? "?"}%]`
+      : "";
+    log("state", `Position ${position_address.slice(0, 8)} peak PnL confirmed at ${pos.peak_pnl_pct.toFixed(2)}%${metaText}`);
     return true;
   }
 
@@ -677,15 +682,22 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   // when dual side is enabled — skip arming the regular trailing so it
   // can't race the dual-side one and fire TRAILING_TP instead of
   // DUAL_SIDE_TRAILING_TP.
-  if (
-    mgmtConfig.trailingTakeProfit &&
-    !pos.trailing_active &&
-    !(mgmtConfig.dualSideEnabled && isDualSideAtOpen) &&
-    (pos.peak_pnl_pct ?? 0) >= mgmtConfig.trailingTriggerPct
-  ) {
-    pos.trailing_active = true;
-    changed = true;
-    log("state", `Position ${position_address.slice(0, 8)} trailing TP activated (peak: ${pos.peak_pnl_pct}%)`);
+  // Re-evaluated against the CURRENT trigger every tick, not latched: the peak
+  // only ever rises, so this is identical to a latch while the setting is
+  // stable — but a latch kept a position armed under an old, lower trigger
+  // after the trigger was raised (a position that peaked at 3.59% still
+  // trailed and closed with the trigger set to 4.25%).
+  if (mgmtConfig.trailingTakeProfit && !(mgmtConfig.dualSideEnabled && isDualSideAtOpen)) {
+    const shouldBeActive = (pos.peak_pnl_pct ?? 0) >= mgmtConfig.trailingTriggerPct;
+    if (shouldBeActive && !pos.trailing_active) {
+      pos.trailing_active = true;
+      changed = true;
+      log("state", `Position ${position_address.slice(0, 8)} trailing TP activated (peak: ${pos.peak_pnl_pct}%, trigger: ${mgmtConfig.trailingTriggerPct}%)`);
+    } else if (!shouldBeActive && pos.trailing_active) {
+      pos.trailing_active = false;
+      changed = true;
+      log("state", `Position ${position_address.slice(0, 8)} trailing TP disarmed (peak ${pos.peak_pnl_pct}% is below the current trigger ${mgmtConfig.trailingTriggerPct}%)`);
+    }
   }
 
   if (
@@ -835,7 +847,10 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
 
   // ── Trailing TP ──
   // Same dual-side exclusion as the activation check above.
+  // Also gated on trailingTakeProfit itself: the "Trailing Off" button used to
+  // stop NEW positions from arming but still let already-armed ones close.
   if (
+    mgmtConfig.trailingTakeProfit &&
     !pnl_pct_suspicious &&
     pos.trailing_active &&
     !(mgmtConfig.dualSideEnabled && isDualSideAtOpen) &&

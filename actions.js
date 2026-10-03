@@ -81,7 +81,10 @@ export async function performClose(position, action, reason, { source = "auto" }
       `🔴 <b>Exit</b> — ${escapeHtml(position.pair)}\n` +
       `Signal: ${escapeHtml(action)}\n` +
       `PnL: ${formatPnl(position.pnl_pct)}\n` +
-      `Reason: ${escapeHtml(reason)}`,
+      `Reason: ${escapeHtml(reason)}` +
+      (position.basis
+        ? `\nBasis: ${position.basis.toUpperCase()} (USD ${formatPnl(position.pnl_pct_usd)} | SOL ${formatPnl(position.pnl_pct_sol)})`
+        : ""),
     );
 
     const swapTargetMint = config.tokens[config.management.autoSwapTargetToken] ?? config.tokens.SOL;

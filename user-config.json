@@ -22,6 +22,8 @@
   "minFeePerTvl24h": 1,
   "minAgeBeforeYieldCheck": 480,
   "solMode": false,
+  "_comment0j": "pnlBasisAuto: when true (default), each position is measured in its own pool's quote currency (SOL pools in SOL, USDC/USDT pools in USD) so SOL/USD price swings do not leak into the PnL that trailing TP / SL act on. solMode is then only the fallback for pools with an unknown quote token. Toggleable live via the Telegram bot's Settings button.",
+  "pnlBasisAuto": true,
 
   "_comment0c": "Strategi Dual Side: exit rules khusus posisi dual-sided (liquidity di token X & Y sekaligus), terpisah dari TP/SL biasa di atas. dualSideStopLossMode: 'pnl_and_oor' (SL butuh PnL tembus SL% DAN oor kiri), 'oor_only' (SL langsung fire begitu oor kiri, PnL diabaikan), 'pnl_only' (SL fire dari PnL aja, oor diabaikan). Optional block, all default to off/null. Toggleable live via the Telegram bot's Settings button.",
   "dualSideEnabled": false,

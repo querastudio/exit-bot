@@ -65,9 +65,10 @@ function dualSideSlModeLabel(mode) {
   return "PnL + OOR kiri";
 }
 
-function fmtValue(n) {
+function fmtValue(n, basis) {
   if (n == null) return "?";
-  return config.management.solMode ? `◎${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+  const inSol = basis ? basis === "sol" : config.management.solMode;
+  return inSol ? `◎${n.toFixed(4)}` : `$${n.toFixed(2)}`;
 }
 
 function fmtAge(minutes) {
@@ -192,7 +193,7 @@ function formatPositionBlock(p, idx) {
     : "";
   return (
     `<b>Posisi ${idx}</b>\n` +
-    `<b>${escapeHtml(p.pair)}</b> | Age: ${fmtAge(p.age_minutes)} | Val: ${fmtValue(p.total_value_usd)} | Unclaimed: ${fmtValue(p.unclaimed_fees_usd)}\n` +
+    `<b>${escapeHtml(p.pair)}</b> | Age: ${fmtAge(p.age_minutes)} | Val: ${fmtValue(p.total_value_usd, p.basis)} | Unclaimed: ${fmtValue(p.unclaimed_fees_usd, p.basis)}\n` +
     `PnL: ${fmtPnl(p.pnl_pct)} ${emoji} | Fee/TVL24h: ${p.fee_per_tvl_24h ?? "?"}% | ${statusEmoji} ${statusLabel}\n` +
     rangeConsumedLine(p) +
     dualSideLine +
@@ -205,6 +206,7 @@ async function fetchAndCachePositions() {
   try {
     lastPositions = await fetchOpenPositions(wallet.publicKey.toString(), {
       solMode: config.management.solMode,
+      basisAuto: config.management.pnlBasisAuto,
       checkDualSided: config.management.dualSideEnabled,
     });
   } catch (e) {
@@ -256,6 +258,7 @@ function buildSettingsText() {
     `Critical warning: ${m.rangeCriticalWarningEnabled ? `ON (≥${m.rangeCriticalWarningPct}%)` : "OFF"}\n` +
     `\n🚨 <b>Bin Yield Guard</b>: ${m.binYieldGuardEnabled ? `ON (bin ≥${m.binYieldGuardBinPct}% + fee/TVL24h &lt;${m.binYieldGuardMinFeePerTvl24h}% → ${m.binYieldGuardAction === "close" ? "AUTO CUTLOSS" : "notify aja"})` : "OFF"}\n` +
     `\n💱 <b>Auto-swap sisa token setelah close</b>: → ${m.autoSwapTargetToken}\n` +
+    `📐 <b>Basis PnL</b>: ${m.pnlBasisAuto ? "otomatis per pool (pool SOL → SOL, pool USDC → USD)" : `global (${m.solMode ? "SOL" : "USD"})`}\n` +
     `\nTap salah satu buat ubah nilainya.`
   );
 }
@@ -331,6 +334,7 @@ function buildSettingsKeyboard() {
     rows.push([{ text: `Aksi: ${m.binYieldGuardAction === "close" ? "🔴 Auto cutloss" : "🟡 Notify aja"}`, callback_data: "cycle_bin_yield_action" }]);
   }
   rows.push([{ text: `💱 Auto-swap target: ${m.autoSwapTargetToken}`, callback_data: "cycle_swap_target" }]);
+  rows.push([{ text: `📐 Basis PnL: ${m.pnlBasisAuto ? "Auto per pool" : `Global ${m.solMode ? "SOL" : "USD"}`}`, callback_data: "toggle_pnl_basis" }]);
   rows.push([{ text: "⬅️ Back", callback_data: "back_to_positions" }]);
   return { inline_keyboard: rows };
 }
@@ -596,6 +600,15 @@ async function handleCallbackQuery(query) {
     const next = config.management.binYieldGuardAction === "close" ? "notify" : "close";
     updateManagementSetting("binYieldGuardAction", next);
     log("telegram-bot", `Bin yield guard action set to ${next} via Telegram`);
+    await showSettings(messageId);
+    return;
+  }
+
+  if (data === "toggle_pnl_basis") {
+    await answerCallbackQuery(query.id);
+    const enabled = !config.management.pnlBasisAuto;
+    updateManagementSetting("pnlBasisAuto", enabled);
+    log("telegram-bot", `PnL basis auto-per-pool ${enabled ? "enabled" : "disabled"} via Telegram`);
     await showSettings(messageId);
     return;
   }

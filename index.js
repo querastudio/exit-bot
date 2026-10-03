@@ -66,6 +66,7 @@ async function tick() {
   try {
     positions = await fetchOpenPositions(wallet.publicKey.toString(), {
       solMode: config.management.solMode,
+      basisAuto: config.management.pnlBasisAuto,
       checkDualSided: config.management.dualSideEnabled,
     });
     consecutiveFetchFailures = 0;
@@ -106,7 +107,11 @@ async function tick() {
 
       const settling = isTopupSettling(p.position, p.pnl_pct, config.management);
       if (!inGracePeriod(p.position, config.management.exitGracePeriodSec) && !settling) {
-        confirmPeak(p.position, p.pnl_pct, config.management.confirmTicks);
+        confirmPeak(p.position, p.pnl_pct, config.management.confirmTicks, {
+          basis: p.basis,
+          pnlUsd: p.pnl_pct_usd,
+          pnlSol: p.pnl_pct_sol,
+        });
       }
 
       const rangeAlert = checkRangeConsumedAlerts(p.position, p, config.management);

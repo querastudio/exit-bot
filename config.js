@@ -92,6 +92,13 @@ export const config = {
     minFeePerTvl24h: Number(u.minFeePerTvl24h),
     minAgeBeforeYieldCheck: Number(u.minAgeBeforeYieldCheck),
     solMode: !!u.solMode,
+    // When true (default), each position's PnL is measured in its own pool's
+    // quote currency — SOL pools in SOL, USDC/USDT pools in USD — instead of
+    // one global currency (solMode below is then only the fallback for pools
+    // whose quote token is unknown). Avoids SOL/USD price swings leaking into
+    // the PnL that trailing TP / SL react to for SOL-quoted pools.
+    // Toggleable live via the Telegram Settings menu.
+    pnlBasisAuto: u.pnlBasisAuto == null ? true : !!u.pnlBasisAuto,
     exitGracePeriodSec: Number(u.exitGracePeriodSec ?? 20),
     // How close (in pct-points) reported PnL must come back to the pre-top-up
     // baseline before we trust it again after a size top-up.

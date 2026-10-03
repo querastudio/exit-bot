@@ -77,6 +77,36 @@ function round(value, decimals = 4) {
   return Math.round(n * factor) / factor;
 }
 
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+
+/**
+ * True when the pool's quote token (tokenY) is SOL. Matches on mint when the
+ * API provides it, otherwise on the symbol. Returns null when the API gives
+ * no quote info at all, so callers can fall back to their global setting.
+ */
+export function isSolQuotePool(pool) {
+  if (pool?.tokenYMint) return pool.tokenYMint === SOL_MINT;
+  if (typeof pool?.tokenY === "string" && pool.tokenY.trim()) return /^w?sol$/i.test(pool.tokenY.trim());
+  return null;
+}
+
+/**
+ * Whether to measure this pool's PnL/values in SOL (true) or USD (false).
+ *
+ * With basisAuto, each position is measured in its OWN quote currency: SOL
+ * pools in SOL, USDC/USDT pools in USD. A single global USD basis injects
+ * SOL/USD price swings into every SOL-quoted position's PnL (its unconverted
+ * SOL side is revalued in dollars every tick), which can fabricate a
+ * "peak" and then a "drop from peak" that has nothing to do with the LP —
+ * and trailing TP/SL act on exactly that number. Falls back to the global
+ * solMode when basisAuto is off or the pool's quote token is unknown.
+ */
+export function resolveUseSol(pool, { solMode = false, basisAuto = false } = {}) {
+  if (!basisAuto) return !!solMode;
+  const solQuote = isSolQuotePool(pool);
+  return solQuote == null ? !!solMode : solQuote;
+}
+
 function deriveOpenPnlPct(p, solMode) {
   const deposit = solMode ? safeNum(p.allTimeDeposits?.total?.sol) : safeNum(p.allTimeDeposits?.total?.usd);
   if (deposit <= 0) return null;
@@ -119,7 +149,7 @@ async function fetchPnlForPool(poolAddress, walletAddress) {
  * Returns an array of open positions with PnL/range/fee data, shaped for
  * state.js's updatePnlAndCheckExits().
  */
-export async function fetchOpenPositions(walletAddress, { solMode = false, checkDualSided = false } = {}) {
+export async function fetchOpenPositions(walletAddress, { solMode: globalSolMode = false, basisAuto = false, checkDualSided = false } = {}) {
   const res = await fetch(`${PORTFOLIO_API}?user=${walletAddress}`);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -132,6 +162,7 @@ export async function fetchOpenPositions(walletAddress, { solMode = false, check
   for (const pool of pools) {
     const pnlByAddress = await fetchPnlForPool(pool.poolAddress, walletAddress);
     const isOOR = pool.outOfRange;
+    const solMode = resolveUseSol(pool, { solMode: globalSolMode, basisAuto });
 
     // Lazily created only if this pool actually has positions to check, and
     // shared across all of them so the pool account is only fetched once.
@@ -207,6 +238,12 @@ export async function fetchOpenPositions(walletAddress, { solMode = false, check
         is_dual_side: isDualSided,
         in_range: p.isOutOfRange != null ? !p.isOutOfRange : !(pool.positionsOutOfRange?.includes(positionAddress) ?? isOOR),
         pnl_pct: pnlPct != null ? round(pnlPct, 2) : null,
+        // Which currency pnl_pct/values above are measured in for THIS pool,
+        // plus both raw readings side by side — kept for diagnostics so a
+        // peak/exit can be traced to (or ruled out as) a SOL-vs-USD artifact.
+        basis: solMode ? "sol" : "usd",
+        pnl_pct_usd: maybeNum(p.pnlPctChange) != null ? round(maybeNum(p.pnlPctChange), 2) : null,
+        pnl_pct_sol: maybeNum(p.pnlSolPctChange) != null ? round(maybeNum(p.pnlSolPctChange), 2) : null,
         pnl_pct_suspicious: pnlPctSuspicious,
         deposit_total: round(depositTotal, 6),
         fee_per_tvl_24h: p.feePerTvl24h != null ? round(parseFloat(p.feePerTvl24h), 2) : null,
